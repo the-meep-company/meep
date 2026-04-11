@@ -17,7 +17,7 @@ export const useThemeStore = create<ThemeState>()(
       setTheme: (name) => set({ themeName: name, theme: themes[name] }),
     }),
     {
-      name: 'drift-theme',
+      name: 'meep-theme',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ themeName: state.themeName }),
       onRehydrateStorage: () => (state) => {

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "drift",
-    "slug": "drift",
+    "name": "meep",
+    "slug": "meep",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "drift",
+    "scheme": "meep",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
