@@ -1,3 +1,6 @@
+// ===== Schedule Source =====
+export type ScheduleSource = 'manual' | 'ai';
+
 // ===== Calendar Events =====
 export interface CalendarEvent {
   id: string;
@@ -10,6 +13,8 @@ export interface CalendarEvent {
   location?: string;
   source: 'local' | 'google' | 'outlook';
   calendarId?: string;
+  scheduleSource?: ScheduleSource;
+  isHabit?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,6 +38,7 @@ export interface Task {
   subtasks?: Task[];
   estimatedMinutes?: number;
   carryOverFrom?: string; // id of original task if carried over
+  scheduleSource?: ScheduleSource;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,3 +83,111 @@ export const EVENT_COLORS = [
   '#8B5CF6', // violet
   '#EC4899', // pink
 ];
+
+// ===== Habits =====
+export type HabitFrequency = 'daily' | 'weekdays' | 'weekends' | 'custom';
+
+export interface Habit {
+  id: string;
+  title: string;
+  description?: string;
+  frequency: HabitFrequency;
+  customDays?: number[]; // 0=Sun..6=Sat, used when frequency='custom'
+  startTime: string; // "HH:mm" format, e.g. "07:00"
+  durationMinutes: number;
+  color: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ===== AI Types =====
+export type AIPersona = 'friendly' | 'professional' | 'playful';
+export type ParsedItemType = 'event' | 'task' | 'goal' | 'habit';
+
+export interface ParsedItem {
+  id: string;
+  type: ParsedItemType;
+  confidence: number; // 0-1
+  raw: string; // original text snippet
+  event?: Partial<CalendarEvent>;
+  task?: Partial<Task>;
+  goal?: Partial<Goal>;
+  habit?: Partial<Habit>;
+  status: 'pending' | 'confirmed' | 'edited' | 'deleted';
+}
+
+export interface BrainDumpResponse {
+  items: ParsedItem[];
+  summary: string;
+  followUpQuestion?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  parsedItems?: ParsedItem[];
+  timestamp: Date;
+}
+
+// ===== Scheduling =====
+export interface SchedulingPattern {
+  id: string;
+  category?: string;
+  preferredTimeRange: { startHour: number; endHour: number };
+  preferredDays: number[];
+  avgDurationMinutes: number;
+  sampleSize: number;
+  updatedAt: Date;
+}
+
+// ===== User Settings =====
+export interface UserSettings {
+  aiPersona: AIPersona;
+  timezone: string;
+  timezoneAutoDetect: boolean;
+}
+
+// ===== Phase 2c: Auto-Scheduling =====
+export interface PatternDataPoint {
+  id: string;
+  category?: string;
+  dayOfWeek: number; // 0=Sun..6=Sat
+  startHour: number; // 0-23, fractional (e.g. 14.5 = 2:30 PM)
+  endHour: number;
+  durationMinutes: number;
+  wasAiSuggested: boolean;
+  wasModified: boolean;
+  recordedAt: Date;
+}
+
+export interface ScheduleRequest {
+  tasks: Task[];
+  existingEvents: CalendarEvent[];
+  habitEvents: CalendarEvent[];
+  patterns: SchedulingPattern[];
+  dateRange: { start: Date; end: Date };
+  workingHours: { startHour: number; endHour: number };
+  timezone: string;
+}
+
+export interface SchedulePlacement {
+  taskId: string;
+  task: Task;
+  proposedStart: Date;
+  proposedEnd: Date;
+  reason: string;
+  confidence: number; // 0-1
+}
+
+export interface ScheduleResult {
+  placements: SchedulePlacement[];
+  unplaceable: { taskId: string; task: Task; reason: string }[];
+}
+
+export interface FreeSlot {
+  start: Date;
+  end: Date;
+  durationMinutes: number;
+}

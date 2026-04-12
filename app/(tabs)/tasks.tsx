@@ -1,10 +1,20 @@
 import { useState } from 'react';
 import { StyleSheet, View, Text, FlatList, TouchableOpacity } from 'react-native';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { addDays, startOfDay } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useCalendarStore } from '@/stores/calendarStore';
+import { useHabitStore } from '@/stores/habitStore';
+import { usePatternStore } from '@/stores/patternStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { generateHabitEventsForDate } from '@/lib/habitHelpers';
+import { autoScheduleTasks } from '@/lib/scheduler';
+import { collectTaskPattern } from '@/lib/patternLearning';
 import TaskItem from '@/components/tasks/TaskItem';
 import TaskFormModal from '@/components/tasks/TaskFormModal';
-import type { Task } from '@/types';
+import ScheduleConfirmModal from '@/components/scheduling/ScheduleConfirmModal';
+import type { Task, ScheduleResult, CalendarEvent } from '@/types';
 
 const FILTERS = ['all', 'todo', 'done'] as const;
 const FILTER_LABELS = { all: 'All', todo: 'To Do', done: 'Done' };
@@ -15,6 +25,8 @@ export default function TasksScreen() {
 
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
 
   const tasks = getFilteredTasks();
 
@@ -28,20 +40,113 @@ export default function TasksScreen() {
     setEditingTask(null);
   };
 
+  const handleAutoSchedule = () => {
+    const allTasks = useTaskStore.getState().tasks;
+    const unscheduled = allTasks.filter(
+      (t) => t.status === 'todo' && !t.scheduledStart && !t.parentTaskId
+    );
+    if (unscheduled.length === 0) return;
+
+    const now = new Date();
+    const rangeStart = startOfDay(now);
+    const rangeEnd = addDays(rangeStart, 3);
+    const existingEvents = useCalendarStore.getState().getEventsForRange(rangeStart, rangeEnd);
+    const activeHabits = useHabitStore.getState().getActiveHabits();
+
+    // Generate habit events for each day in range
+    const habitEvents: CalendarEvent[] = [];
+    let day = rangeStart;
+    while (day < rangeEnd) {
+      habitEvents.push(...generateHabitEventsForDate(activeHabits, day));
+      day = addDays(day, 1);
+    }
+
+    const { patterns } = usePatternStore.getState();
+    const { timezone } = useSettingsStore.getState();
+
+    const result = autoScheduleTasks({
+      tasks: unscheduled,
+      existingEvents,
+      habitEvents,
+      patterns,
+      dateRange: { start: rangeStart, end: rangeEnd },
+      workingHours: { startHour: 8, endHour: 21 },
+      timezone,
+    });
+
+    setScheduleResult(result);
+    setShowScheduleModal(true);
+  };
+
+  const handleAcceptPlacement = (taskId: string) => {
+    if (!scheduleResult) return;
+    const placement = scheduleResult.placements.find((p) => p.taskId === taskId);
+    if (!placement) return;
+
+    const now = new Date();
+
+    // Update the task with scheduled times
+    useTaskStore.getState().updateTask(taskId, {
+      scheduledStart: placement.proposedStart,
+      scheduledEnd: placement.proposedEnd,
+      scheduleSource: 'ai',
+    });
+
+    // Create a calendar event for this task
+    const event: CalendarEvent = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+      title: placement.task.title,
+      description: placement.task.description,
+      startTime: placement.proposedStart,
+      endTime: placement.proposedEnd,
+      allDay: false,
+      color: placement.task.color ?? '#6C5CE7',
+      source: 'local',
+      scheduleSource: 'ai',
+      createdAt: now,
+      updatedAt: now,
+    };
+    useCalendarStore.getState().addEvent(event);
+
+    // Record pattern data
+    const pattern = collectTaskPattern({
+      ...placement.task,
+      scheduledStart: placement.proposedStart,
+      scheduledEnd: placement.proposedEnd,
+      scheduleSource: 'ai',
+    });
+    if (pattern) usePatternStore.getState().recordDataPoint(pattern);
+  };
+
+  const handleAcceptAll = () => {
+    if (!scheduleResult) return;
+    for (const placement of scheduleResult.placements) {
+      handleAcceptPlacement(placement.taskId);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.colors.text }]}>Tasks</Text>
-        <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}
-          onPress={() => {
-            setEditingTask(null);
-            setShowTaskForm(true);
-          }}
-        >
-          <Text style={styles.addBtnText}>+</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[styles.scheduleBtn, { backgroundColor: theme.colors.primary + '18' }]}
+            onPress={handleAutoSchedule}
+          >
+            <FontAwesome name="magic" size={16} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}
+            onPress={() => {
+              setEditingTask(null);
+              setShowTaskForm(true);
+            }}
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Filter tabs */}
@@ -97,6 +202,18 @@ export default function TasksScreen() {
         editTask={editingTask}
         onClose={handleCloseModal}
       />
+
+      {scheduleResult && (
+        <ScheduleConfirmModal
+          visible={showScheduleModal}
+          placements={scheduleResult.placements}
+          unplaceable={scheduleResult.unplaceable}
+          onAccept={handleAcceptPlacement}
+          onReject={() => {}}
+          onAcceptAll={handleAcceptAll}
+          onClose={() => setShowScheduleModal(false)}
+        />
+      )}
     </View>
   );
 }
@@ -116,6 +233,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scheduleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addBtn: {
     width: 36,

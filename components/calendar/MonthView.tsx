@@ -5,6 +5,8 @@ import {
 } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
+import { useHabitStore } from '@/stores/habitStore';
+import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -15,6 +17,8 @@ interface MonthViewProps {
 export default function MonthView({ onDayPress }: MonthViewProps) {
   const { theme } = useThemeStore();
   const { selectedDate, setSelectedDate, setView, getEventsForDate } = useCalendarStore();
+  const { getActiveHabits } = useHabitStore();
+  const activeHabits = getActiveHabits();
 
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
@@ -62,7 +66,9 @@ export default function MonthView({ onDayPress }: MonthViewProps) {
             const inMonth = isSameMonth(d, selectedDate);
             const today = isToday(d);
             const selected = isSameDay(d, selectedDate);
-            const events = getEventsForDate(d);
+            const realEvents = getEventsForDate(d);
+            const habitEvents = generateHabitEventsForDate(activeHabits, d);
+            const events = [...realEvents, ...habitEvents];
 
             return (
               <TouchableOpacity

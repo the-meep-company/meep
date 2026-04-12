@@ -84,6 +84,13 @@ export default function TaskItem({ task, onPress }: TaskItemProps) {
               {subtasks.filter((s) => s.status === 'done').length}/{subtasks.length} subtasks
             </Text>
           )}
+          {task.scheduleSource === 'ai' && task.scheduledStart && (
+            <View style={[styles.aiBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+              <Text style={[styles.aiBadgeText, { color: theme.colors.primary }]}>
+                AI scheduled
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -150,5 +157,14 @@ const styles = StyleSheet.create({
   },
   subtaskCount: {
     fontSize: 12,
+  },
+  aiBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  aiBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 });
