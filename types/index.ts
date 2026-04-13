@@ -128,7 +128,28 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   parsedItems?: ParsedItem[];
+  actions?: ChatAction[];
   timestamp: Date;
+}
+
+// ===== Chat Actions (Phase 3B) =====
+export type ChatActionType =
+  | 'move_event'
+  | 'delete_event'
+  | 'create_event'
+  | 'complete_task'
+  | 'create_task';
+
+export interface ChatAction {
+  type: ChatActionType;
+  params: Record<string, any>;
+  label: string;
+}
+
+export interface ChatSession {
+  id: string;
+  startedAt: Date;
+  messages: ChatMessage[];
 }
 
 // ===== Scheduling =====

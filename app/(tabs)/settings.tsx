@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, TextInput } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { themes, type ThemeName } from '@/themes';
@@ -13,8 +13,8 @@ const PERSONAS: { value: AIPersona; label: string; description: string }[] = [
 export default function SettingsScreen() {
   const { theme, themeName, setTheme } = useThemeStore();
   const {
-    aiPersona, timezone, timezoneAutoDetect,
-    setPersona, setTimezoneAutoDetect,
+    aiPersona, timezone, timezoneAutoDetect, companionName,
+    setPersona, setTimezoneAutoDetect, setCompanionName,
   } = useSettingsStore();
 
   return (
@@ -101,6 +101,35 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       ))}
 
+      {/* Companion Name Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Companion Name
+      </Text>
+
+      <View
+        style={[
+          styles.optionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.borderRadius.md,
+          },
+        ]}
+      >
+        <View style={styles.optionInfo}>
+          <TextInput
+            style={[styles.nameInput, { color: theme.colors.text }]}
+            value={companionName}
+            onChangeText={setCompanionName}
+            placeholder="Give your AI a name..."
+            placeholderTextColor={theme.colors.textTertiary}
+          />
+          <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>
+            Your AI companion will introduce itself with this name
+          </Text>
+        </View>
+      </View>
+
       {/* Timezone Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
         Timezone
@@ -178,5 +207,11 @@ const styles = StyleSheet.create({
   },
   optionDesc: {
     fontSize: 13,
+  },
+  nameInput: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+    padding: 0,
   },
 });

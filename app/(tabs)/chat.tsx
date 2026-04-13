@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { useState, useRef, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { addDays, startOfDay } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
@@ -9,7 +9,7 @@ import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { usePatternStore } from '@/stores/patternStore';
-import { parseBrainDump, sendChatCorrection } from '@/lib/ai';
+import { parseBrainDump, sendChatCorrection, sendChatMessage } from '@/lib/ai';
 import { confirmAndSaveItem, confirmAndSaveAll } from '@/lib/confirmItems';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import { autoScheduleTasks } from '@/lib/scheduler';
@@ -18,11 +18,12 @@ import BrainDumpInput from '@/components/braindump/BrainDumpInput';
 import ParsedItemsList from '@/components/braindump/ParsedItemsList';
 import ChatBubble from '@/components/braindump/ChatBubble';
 import ChatInput from '@/components/braindump/ChatInput';
+import ActionConfirmCard from '@/components/braindump/ActionConfirmCard';
 import ItemEditModal from '@/components/braindump/ItemEditModal';
 import ScheduleConfirmModal from '@/components/scheduling/ScheduleConfirmModal';
-import type { ParsedItem, ChatMessage, ScheduleResult, CalendarEvent } from '@/types';
+import type { ParsedItem, ChatMessage, ChatAction, ScheduleResult, CalendarEvent } from '@/types';
 
-type ScreenMode = 'input' | 'review';
+type ScreenMode = 'input' | 'review' | 'chat';
 
 export default function MeepScreen() {
   const { theme } = useThemeStore();
@@ -30,8 +31,9 @@ export default function MeepScreen() {
     messages, currentParsedItems, isProcessing,
     addMessage, setParsedItems, updateParsedItem, removeParsedItem,
     confirmItem, confirmAllItems, setProcessing, clearMessages,
+    startNewSession, endSession,
   } = useChatStore();
-  const { aiPersona, timezone } = useSettingsStore();
+  const { aiPersona, timezone, companionName } = useSettingsStore();
 
   const [screenMode, setScreenMode] = useState<ScreenMode>('input');
   const [summary, setSummary] = useState('');
@@ -39,7 +41,10 @@ export default function MeepScreen() {
   const [showSchedulePrompt, setShowSchedulePrompt] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
+  const [actionStatuses, setActionStatuses] = useState<Record<string, 'accepted' | 'rejected'>>({});
   const scrollRef = useRef<ScrollView>(null);
+
+  // ===== Brain Dump Handlers (unchanged) =====
 
   const handleBrainDump = async (text: string) => {
     setProcessing(true);
@@ -242,6 +247,114 @@ export default function MeepScreen() {
     setScreenMode('input');
   };
 
+  // ===== Chat Mode Handlers =====
+
+  const handleStartChat = () => {
+    clearMessages();
+    startNewSession();
+    setActionStatuses({});
+    setScreenMode('chat');
+  };
+
+  const handleBackFromChat = () => {
+    endSession();
+    setScreenMode('input');
+  };
+
+  const handleChatSend = async (text: string) => {
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: text,
+      timestamp: new Date(),
+    };
+    addMessage(userMsg);
+    setProcessing(true);
+
+    try {
+      const result = await sendChatMessage(
+        [...messages, userMsg],
+        aiPersona,
+        companionName,
+        timezone
+      );
+
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: result.message,
+        actions: result.actions || undefined,
+        timestamp: new Date(),
+      };
+      addMessage(assistantMsg);
+    } catch (err) {
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Sorry, something went wrong. ${err instanceof Error ? err.message : 'Please try again.'}`,
+        timestamp: new Date(),
+      };
+      addMessage(errorMsg);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleActionAccept = useCallback((action: ChatAction, messageId: string, actionIndex: number) => {
+    const key = `${messageId}-${actionIndex}`;
+    setActionStatuses((prev) => ({ ...prev, [key]: 'accepted' }));
+
+    const now = new Date();
+    switch (action.type) {
+      case 'create_event': {
+        useCalendarStore.getState().addEvent({
+          id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+          title: action.params.title,
+          startTime: new Date(action.params.startTime),
+          endTime: new Date(action.params.endTime),
+          description: action.params.description,
+          allDay: action.params.allDay ?? false,
+          color: action.params.color ?? '#2563EB',
+          source: 'local',
+          createdAt: now,
+          updatedAt: now,
+        });
+        break;
+      }
+      case 'move_event':
+        useCalendarStore.getState().updateEvent(action.params.eventId, {
+          startTime: new Date(action.params.newStartTime),
+          endTime: new Date(action.params.newEndTime),
+        });
+        break;
+      case 'delete_event':
+        useCalendarStore.getState().deleteEvent(action.params.eventId);
+        break;
+      case 'complete_task':
+        useTaskStore.getState().toggleStatus(action.params.taskId);
+        break;
+      case 'create_task': {
+        useTaskStore.getState().addTask({
+          id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+          title: action.params.title,
+          priority: action.params.priority ?? 3,
+          status: 'todo',
+          description: action.params.description,
+          dueDate: action.params.dueDate ? new Date(action.params.dueDate) : undefined,
+          estimatedMinutes: action.params.estimatedMinutes,
+          createdAt: now,
+          updatedAt: now,
+        });
+        break;
+      }
+    }
+  }, []);
+
+  const handleActionReject = useCallback((action: ChatAction, messageId: string, actionIndex: number) => {
+    const key = `${messageId}-${actionIndex}`;
+    setActionStatuses((prev) => ({ ...prev, [key]: 'rejected' }));
+  }, []);
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -250,17 +363,93 @@ export default function MeepScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>Meep</Text>
-        {screenMode === 'review' && (
-          <TouchableOpacity onPress={handleNewDump}>
-            <Text style={[styles.newButton, { color: theme.colors.primary }]}>New</Text>
-          </TouchableOpacity>
+        {screenMode === 'chat' ? (
+          <>
+            <TouchableOpacity onPress={handleBackFromChat} style={styles.backButton}>
+              <FontAwesome name="chevron-left" size={16} color={theme.colors.primary} />
+            </TouchableOpacity>
+            <Text style={[styles.title, { color: theme.colors.text }]}>{companionName}</Text>
+            <TouchableOpacity onPress={handleStartChat}>
+              <Text style={[styles.newButton, { color: theme.colors.primary }]}>New Chat</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.title, { color: theme.colors.text }]}>Meep</Text>
+            {screenMode === 'review' && (
+              <TouchableOpacity onPress={handleNewDump}>
+                <Text style={[styles.newButton, { color: theme.colors.primary }]}>New</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
 
       {/* Content */}
       {screenMode === 'input' ? (
-        <BrainDumpInput onSubmit={handleBrainDump} isProcessing={isProcessing} />
+        <View style={styles.inputContainer}>
+          <BrainDumpInput onSubmit={handleBrainDump} isProcessing={isProcessing} />
+
+          <Pressable
+            testID="chat-button"
+            accessibilityRole="button"
+            style={[styles.chatButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            onPress={handleStartChat}
+          >
+            <FontAwesome name="comments" size={18} color={theme.colors.primary} />
+            <Text style={[styles.chatButtonText, { color: theme.colors.text }]}>
+              Chat with {companionName}
+            </Text>
+            <FontAwesome name="chevron-right" size={14} color={theme.colors.textSecondary} />
+          </Pressable>
+        </View>
+      ) : screenMode === 'chat' ? (
+        <View style={styles.reviewContainer}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.chatScroll}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          >
+            {messages.length === 0 && (
+              <View style={styles.emptyChat}>
+                <FontAwesome name="comments-o" size={48} color={theme.colors.textTertiary} />
+                <Text style={[styles.emptyChatText, { color: theme.colors.textSecondary }]}>
+                  Ask {companionName} about your schedule, tasks, or anything else!
+                </Text>
+              </View>
+            )}
+
+            {messages.map((msg) => (
+              <View key={msg.id}>
+                <ChatBubble message={msg} />
+                {msg.actions && msg.actions.length > 0 && (
+                  <View style={styles.actionsSection}>
+                    {msg.actions.map((action, idx) => {
+                      const key = `${msg.id}-${idx}`;
+                      return (
+                        <ActionConfirmCard
+                          key={key}
+                          action={action}
+                          onAccept={(a) => handleActionAccept(a, msg.id, idx)}
+                          onReject={(a) => handleActionReject(a, msg.id, idx)}
+                          status={actionStatuses[key]}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+
+          <ChatInput
+            onSend={handleChatSend}
+            disabled={isProcessing}
+            placeholder={`Chat with ${companionName}...`}
+          />
+        </View>
       ) : (
         <View style={styles.reviewContainer}>
           <ScrollView
@@ -365,11 +554,34 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 12,
   },
+  backButton: {
+    padding: 4,
+    marginRight: 8,
+  },
   title: {
     fontSize: 28,
     fontWeight: '700',
+    flex: 1,
   },
   newButton: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    flex: 1,
+  },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 20,
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  chatButtonText: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -381,6 +593,23 @@ const styles = StyleSheet.create({
   },
   chatContent: {
     paddingBottom: 16,
+  },
+  emptyChat: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 40,
+    gap: 16,
+  },
+  emptyChatText: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  actionsSection: {
+    paddingHorizontal: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
   parsedSection: {
     paddingHorizontal: 12,
