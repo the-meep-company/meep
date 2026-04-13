@@ -4,6 +4,17 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { themes, type ThemeName } from '@/themes';
 import type { AIPersona } from '@/types';
 
+const VOICE_LOCALES: { value: string; label: string }[] = [
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'en-GB', label: 'English (UK)' },
+  { value: 'es-ES', label: 'Spanish' },
+  { value: 'fr-FR', label: 'French' },
+  { value: 'de-DE', label: 'German' },
+  { value: 'it-IT', label: 'Italian' },
+  { value: 'pt-BR', label: 'Portuguese (Brazil)' },
+  { value: 'ja-JP', label: 'Japanese' },
+];
+
 const PERSONAS: { value: AIPersona; label: string; description: string }[] = [
   { value: 'friendly', label: 'Friendly', description: 'Warm and encouraging, casual language' },
   { value: 'professional', label: 'Professional', description: 'Clear and efficient, straight to the point' },
@@ -13,8 +24,8 @@ const PERSONAS: { value: AIPersona; label: string; description: string }[] = [
 export default function SettingsScreen() {
   const { theme, themeName, setTheme } = useThemeStore();
   const {
-    aiPersona, timezone, timezoneAutoDetect, companionName,
-    setPersona, setTimezoneAutoDetect, setCompanionName,
+    aiPersona, timezone, timezoneAutoDetect, companionName, voiceLocale,
+    setPersona, setTimezoneAutoDetect, setCompanionName, setVoiceLocale,
   } = useSettingsStore();
 
   return (
@@ -129,6 +140,35 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Voice Language Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Voice Language
+      </Text>
+
+      {VOICE_LOCALES.map((locale) => (
+        <TouchableOpacity
+          key={locale.value}
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: voiceLocale === locale.value ? theme.colors.primaryLight : theme.colors.surface,
+              borderColor: voiceLocale === locale.value ? theme.colors.primary : theme.colors.border,
+              borderRadius: theme.borderRadius.md,
+            },
+          ]}
+          onPress={() => setVoiceLocale(locale.value)}
+        >
+          <View style={styles.optionInfo}>
+            <Text style={[styles.optionName, { color: theme.colors.text }]}>
+              {locale.label}
+            </Text>
+          </View>
+          {voiceLocale === locale.value && (
+            <Text style={{ color: theme.colors.primary, fontSize: 18 }}>✓</Text>
+          )}
+        </TouchableOpacity>
+      ))}
 
       {/* Timezone Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
