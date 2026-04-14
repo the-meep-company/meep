@@ -23,6 +23,7 @@ interface CalendarState {
   updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
   deleteEvent: (id: string) => void;
   setEvents: (events: CalendarEvent[]) => void;
+  batchUpsertEvents: (events: CalendarEvent[], deletedIds?: string[]) => void;
 
   // Selectors
   getEventsForDate: (date: Date) => CalendarEvent[];
@@ -90,6 +91,19 @@ export const useCalendarStore = create<CalendarState>()(
       },
 
       setEvents: (events) => set({ events }),
+
+      batchUpsertEvents: (incoming, deletedIds = []) =>
+        set((state) => {
+          const deletedSet = new Set(deletedIds);
+          const existingById = new Map(state.events.map((e) => [e.id, e]));
+          for (const event of incoming) {
+            existingById.set(event.id, event);
+          }
+          const result = [...existingById.values()].filter(
+            (e) => !deletedSet.has(e.id)
+          );
+          return { events: result };
+        }),
 
       getEventsForDate: (date) => {
         const dayStart = startOfDay(date);

@@ -1,6 +1,24 @@
 // ===== Schedule Source =====
 export type ScheduleSource = 'manual' | 'ai';
 
+// ===== Google Calendar Sync =====
+export interface GoogleCalendarInfo {
+  id: string;           // Google calendar ID (usually an email)
+  summary: string;      // Display name
+  backgroundColor: string;
+  foregroundColor: string;
+  primary: boolean;
+  selected: boolean;    // User's choice to sync this calendar
+}
+
+export interface SyncState {
+  lastSyncAt: Date | null;
+  isSyncing: boolean;
+  syncError: string | null;
+}
+
+export type SyncStatus = 'synced' | 'pending_push' | 'pending_delete' | 'conflict';
+
 // ===== Calendar Events =====
 export interface CalendarEvent {
   id: string;
@@ -15,6 +33,10 @@ export interface CalendarEvent {
   calendarId?: string;
   scheduleSource?: ScheduleSource;
   isHabit?: boolean;
+  // Google Calendar sync fields
+  googleEventId?: string;       // Google's event ID, used to match on re-import
+  googleCalendarId?: string;    // Which Google calendar it came from
+  syncStatus?: SyncStatus;
   createdAt: Date;
   updatedAt: Date;
 }
