@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
+import VoiceInput from '@/components/braindump/VoiceInput';
 
 interface BrainDumpInputProps {
   onSubmit: (text: string) => void;
@@ -13,10 +14,37 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
   const { theme } = useThemeStore();
   const [text, setText] = useState('');
   const [quickMode, setQuickMode] = useState(false);
+  // Captures whatever was typed before voice started so we can prepend it correctly
+  const textBeforeVoice = useRef('');
+  const voiceSessionActive = useRef(false);
 
   const handleSubmit = () => {
     if (!text.trim() || isProcessing) return;
     onSubmit(text.trim());
+  };
+
+  const handleTranscription = (transcript: string) => {
+    const prefix = textBeforeVoice.current;
+    const updated = quickMode
+      ? transcript
+      : prefix ? `${prefix}\n${transcript}` : transcript;
+    setText(updated);
+    textBeforeVoice.current = '';
+    voiceSessionActive.current = false;
+    if (quickMode) {
+      onSubmit(updated.trim());
+    }
+  };
+
+  // Shows live transcription in the text field as the user speaks
+  const handleInterim = (interim: string) => {
+    // Save pre-voice text on the first interim event of each session
+    if (!voiceSessionActive.current) {
+      textBeforeVoice.current = text;
+      voiceSessionActive.current = true;
+    }
+    const prefix = textBeforeVoice.current;
+    setText(prefix ? `${prefix}\n${interim}` : interim);
   };
 
   return (
@@ -84,33 +112,37 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
         </Text>
       )}
 
-      {/* Submit button */}
-      <TouchableOpacity
-        onPress={handleSubmit}
-        disabled={!text.trim() || isProcessing}
-        style={[
-          styles.submitButton,
-          {
-            backgroundColor: text.trim() && !isProcessing
-              ? theme.colors.primary
-              : theme.colors.surface,
-            borderRadius: theme.borderRadius.md,
-          },
-        ]}
-      >
-        {isProcessing ? (
-          <ActivityIndicator color="#FFF" size="small" />
-        ) : (
-          <Text
-            style={[
-              styles.submitText,
-              { color: text.trim() ? '#FFF' : theme.colors.textTertiary },
-            ]}
-          >
-            {quickMode ? 'Add' : 'Process'}
-          </Text>
-        )}
-      </TouchableOpacity>
+      {/* Submit row: mic button + process button */}
+      <View style={styles.submitRow}>
+        <VoiceInput onTranscription={handleTranscription} onInterim={handleInterim} disabled={isProcessing} />
+
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={!text.trim() || isProcessing}
+          style={[
+            styles.submitButton,
+            {
+              backgroundColor: text.trim() && !isProcessing
+                ? theme.colors.primary
+                : theme.colors.surface,
+              borderRadius: theme.borderRadius.md,
+            },
+          ]}
+        >
+          {isProcessing ? (
+            <ActivityIndicator color="#FFF" size="small" />
+          ) : (
+            <Text
+              style={[
+                styles.submitText,
+                { color: text.trim() ? '#FFF' : theme.colors.textTertiary },
+              ]}
+            >
+              {quickMode ? 'Add' : 'Process'}
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -152,10 +184,16 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: 8,
   },
+  submitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 16,
+  },
   submitButton: {
+    flex: 1,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 16,
   },
   submitText: {
     fontSize: 16,
