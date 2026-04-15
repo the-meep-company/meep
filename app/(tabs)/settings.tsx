@@ -1,8 +1,10 @@
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, TextInput, Alert } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useRouter } from 'expo-router';
+import { useSyncStore } from '@/stores/syncStore';
 import { themes, type ThemeName } from '@/themes';
 import type { AIPersona } from '@/types';
 
@@ -24,13 +26,19 @@ const PERSONAS: { value: AIPersona; label: string; description: string }[] = [
 ];
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { theme, themeName, setTheme } = useThemeStore();
   const {
     aiPersona, timezone, timezoneAutoDetect, companionName, voiceLocale,
     setPersona, setTimezoneAutoDetect, setCompanionName, setVoiceLocale,
   } = useSettingsStore();
   const { user, isGuest, signOut } = useAuthStore();
-  const router = useRouter();
+  const { googleCalendars, syncState } = useSyncStore();
+
+  const isGoogleConnected = googleCalendars.length > 0;
+  const googleStatusLabel = isGoogleConnected
+    ? `${googleCalendars.length} calendar${googleCalendars.length > 1 ? 's' : ''} connected`
+    : 'Not connected';
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -255,6 +263,37 @@ export default function SettingsScreen() {
           trackColor={{ true: theme.colors.primary }}
         />
       </View>
+
+      {/* Google Calendar Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Integrations
+      </Text>
+
+      <TouchableOpacity
+        style={[
+          styles.optionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isGoogleConnected ? theme.colors.primary : theme.colors.border,
+            borderRadius: theme.borderRadius.md,
+          },
+        ]}
+        onPress={() => router.push('/google-calendar' as Href)}
+      >
+        <View style={[styles.themePreview, { backgroundColor: '#4285F4', borderRadius: theme.borderRadius.sm, alignItems: 'center', justifyContent: 'center' }]}>
+          <FontAwesome name="google" size={20} color="#fff" />
+        </View>
+        <View style={styles.optionInfo}>
+          <Text style={[styles.optionName, { color: theme.colors.text }]}>
+            Google Calendar
+          </Text>
+          <Text style={[styles.optionDesc, { color: isGoogleConnected ? theme.colors.primary : theme.colors.textSecondary }]}>
+            {googleStatusLabel}
+            {syncState.isSyncing ? ' · Syncing…' : ''}
+          </Text>
+        </View>
+        <FontAwesome name="chevron-right" size={14} color={theme.colors.textTertiary} />
+      </TouchableOpacity>
     </ScrollView>
   );
 }

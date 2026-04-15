@@ -1,7 +1,8 @@
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { format } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
+import { useSyncStore } from '@/stores/syncStore';
 import type { CalendarView } from '@/types';
 
 const VIEW_OPTIONS: { key: CalendarView; label: string }[] = [
@@ -14,6 +15,8 @@ export default function CalendarHeader() {
   const { theme } = useThemeStore();
   const { currentView, selectedDate, setView, goBack, goForward, goToToday } =
     useCalendarStore();
+  const { syncState, googleCalendars } = useSyncStore();
+  const isGoogleConnected = googleCalendars.length > 0;
 
   const getTitle = () => {
     if (currentView === 'day') return format(selectedDate, 'EEEE, MMM d');
@@ -29,8 +32,15 @@ export default function CalendarHeader() {
           <Text style={[styles.navArrow, { color: theme.colors.primary }]}>‹</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={goToToday}>
+        <TouchableOpacity onPress={goToToday} style={styles.titleRow}>
           <Text style={[styles.title, { color: theme.colors.text }]}>{getTitle()}</Text>
+          {isGoogleConnected && syncState.isSyncing && (
+            <ActivityIndicator
+              size="small"
+              color={theme.colors.primary}
+              style={styles.syncIndicator}
+            />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={goForward} style={styles.navBtn}>
@@ -101,9 +111,17 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '300',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   title: {
     fontSize: 20,
     fontWeight: '600',
+  },
+  syncIndicator: {
+    marginLeft: 4,
   },
   viewSwitcher: {
     flexDirection: 'row',

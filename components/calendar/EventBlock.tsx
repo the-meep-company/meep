@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { format } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
@@ -17,10 +17,19 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
   const endTime = new Date(event.endTime);
   const isHabit = event.isHabit === true;
   const isAiPlaced = event.scheduleSource === 'ai';
+  const isGoogle = event.source === 'google';
+
+  const handlePress = () => {
+    if (isGoogle) {
+      Alert.alert('Google Calendar Event', 'This event is read-only. Edit it in Google Calendar.');
+      return;
+    }
+    onPress?.(event);
+  };
 
   return (
     <TouchableOpacity
-      onPress={() => onPress?.(event)}
+      onPress={handlePress}
       activeOpacity={0.7}
       style={[
         styles.container,
@@ -45,8 +54,11 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
         >
           {event.title}
         </Text>
-        {isAiPlaced && (
+        {isAiPlaced && !isGoogle && (
           <FontAwesome name="magic" size={10} color={theme.colors.primary} style={styles.aiIcon} />
+        )}
+        {isGoogle && (
+          <FontAwesome name="google" size={10} color={event.color} style={styles.googleIcon} />
         )}
       </View>
       {!compact && (
@@ -77,6 +89,9 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   aiIcon: {
+    marginLeft: 4,
+  },
+  googleIcon: {
     marginLeft: 4,
   },
   title: {
