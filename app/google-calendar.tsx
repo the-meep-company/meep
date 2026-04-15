@@ -13,18 +13,16 @@ import { Stack, useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { fetchGoogleCalendars, performSync } from '@/lib/googleCalendar';
 
-// ---- Placeholder OAuth token ----
-// TODO: replace with real token from authStore once Person A's branch lands:
-//   const { googleAccessToken } = useAuthStore();
-const PLACEHOLDER_TOKEN = 'mock';
-
 export default function GoogleCalendarScreen() {
   const router = useRouter();
   const { theme } = useThemeStore();
+  const { session, signInWithGoogle } = useAuthStore();
+  const accessToken = session?.provider_token ?? null;
 
   const {
     googleCalendars,
@@ -46,37 +44,22 @@ export default function GoogleCalendarScreen() {
   // syncStore persistence if you want them to survive app restarts)
   const syncTokensRef = { current: {} as Record<string, string> };
 
-  const doConnect = async () => {
-    // TODO: replace with real Google OAuth once Person A's auth branch lands.
-    // For now, load mock calendars so the full UI is testable.
+  const handleConnect = async () => {
     try {
-      const calendars = await fetchGoogleCalendars(PLACEHOLDER_TOKEN);
-      useSyncStore.getState().setGoogleCalendars(calendars);
+      await signInWithGoogle();
+      if (session?.provider_token) {
+        const calendars = await fetchGoogleCalendars(session.provider_token);
+        useSyncStore.getState().setGoogleCalendars(calendars);
+      }
     } catch (e) {
       setSyncError(String(e));
-    }
-  };
-
-  const handleConnect = () => {
-    if (Platform.OS === 'web') {
-      // Alert.alert is a no-op on web — just connect directly
-      doConnect();
-    } else {
-      Alert.alert(
-        'Connect Google Calendar',
-        'Google OAuth is not yet wired up (requires Person A\'s auth branch). Load mock calendars for testing?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Load mock', onPress: doConnect },
-        ]
-      );
     }
   };
 
   const handleSyncNow = async () => {
     if (!isConnected || isSyncing) return;
     await performSync({
-      accessToken: PLACEHOLDER_TOKEN,
+      accessToken: accessToken ?? '',
       googleCalendars,
       selectedCalendarIds,
       syncTokens: syncTokensRef.current,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { performSync } from '@/lib/googleCalendar';
@@ -11,11 +12,9 @@ import MonthView from '@/components/calendar/MonthView';
 import EventFormModal from '@/components/calendar/EventFormModal';
 import type { CalendarEvent } from '@/types';
 
-// Placeholder until Person A's authStore provides the real token
-const PLACEHOLDER_TOKEN = 'mock';
-
 export default function CalendarScreen() {
   const { theme } = useThemeStore();
+  const { session } = useAuthStore();
   const { currentView, events, batchUpsertEvents } = useCalendarStore();
   const {
     googleCalendars,
@@ -39,7 +38,7 @@ export default function CalendarScreen() {
     if (!isConnected || syncState.isSyncing) return;
 
     performSync({
-      accessToken: PLACEHOLDER_TOKEN,
+      accessToken: session?.provider_token ?? '',
       googleCalendars,
       selectedCalendarIds,
       syncTokens: syncTokensRef.current,
