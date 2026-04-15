@@ -11,10 +11,25 @@ interface HabitState {
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
   toggleActive: (id: string) => void;
+  setHabits: (habits: Habit[]) => void;
 
   // Selectors
   getActiveHabits: () => Habit[];
   getHabitsForDay: (dayOfWeek: number) => Habit[];
+}
+
+function syncHabit(habit: Habit) {
+  const { useAuthStore } = require('./authStore');
+  const { pushHabit } = require('@/lib/sync');
+  const user = useAuthStore.getState().user;
+  if (user) pushHabit(habit, user.id).catch(() => {});
+}
+
+function syncDeleteHabit(id: string) {
+  const { useAuthStore } = require('./authStore');
+  const { deleteRemoteHabit } = require('@/lib/sync');
+  const user = useAuthStore.getState().user;
+  if (user) deleteRemoteHabit(id).catch(() => {});
 }
 
 function habitAppliesToDay(habit: Habit, dayOfWeek: number): boolean {
@@ -37,25 +52,37 @@ export const useHabitStore = create<HabitState>()(
     (set, get) => ({
       habits: [],
 
-      addHabit: (habit) =>
-        set((state) => ({ habits: [...state.habits, habit] })),
+      addHabit: (habit) => {
+        set((state) => ({ habits: [...state.habits, habit] }));
+        syncHabit(habit);
+      },
 
-      updateHabit: (id, updates) =>
+      updateHabit: (id, updates) => {
         set((state) => ({
           habits: state.habits.map((h) =>
             h.id === id ? { ...h, ...updates, updatedAt: new Date() } : h
           ),
-        })),
+        }));
+        const updated = get().habits.find((h) => h.id === id);
+        if (updated) syncHabit(updated);
+      },
 
-      deleteHabit: (id) =>
-        set((state) => ({ habits: state.habits.filter((h) => h.id !== id) })),
+      deleteHabit: (id) => {
+        set((state) => ({ habits: state.habits.filter((h) => h.id !== id) }));
+        syncDeleteHabit(id);
+      },
 
-      toggleActive: (id) =>
+      toggleActive: (id) => {
         set((state) => ({
           habits: state.habits.map((h) =>
             h.id === id ? { ...h, isActive: !h.isActive, updatedAt: new Date() } : h
           ),
-        })),
+        }));
+        const updated = get().habits.find((h) => h.id === id);
+        if (updated) syncHabit(updated);
+      },
+
+      setHabits: (habits) => set({ habits }),
 
       getActiveHabits: () => get().habits.filter((h) => h.isActive),
 
