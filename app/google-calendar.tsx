@@ -1,6 +1,7 @@
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -8,13 +9,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCalendarStore } from '@/stores/calendarStore';
-import { performSync } from '@/lib/googleCalendar';
+import { fetchGoogleCalendars, performSync } from '@/lib/googleCalendar';
 
 // ---- Placeholder OAuth token ----
 // TODO: replace with real token from authStore once Person A's branch lands:
@@ -45,30 +46,31 @@ export default function GoogleCalendarScreen() {
   // syncStore persistence if you want them to survive app restarts)
   const syncTokensRef = { current: {} as Record<string, string> };
 
+  const doConnect = async () => {
+    // TODO: replace with real Google OAuth once Person A's auth branch lands.
+    // For now, load mock calendars so the full UI is testable.
+    try {
+      const calendars = await fetchGoogleCalendars(PLACEHOLDER_TOKEN);
+      useSyncStore.getState().setGoogleCalendars(calendars);
+    } catch (e) {
+      setSyncError(String(e));
+    }
+  };
+
   const handleConnect = () => {
-    // TODO: trigger Google OAuth via Person A's auth system.
-    // For now, simulate a successful connection with mock data.
-    Alert.alert(
-      'Connect Google Calendar',
-      'Google OAuth is not yet available — this requires Person A\'s auth branch. Loading mock calendars for UI testing.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Load mock',
-          onPress: async () => {
-            const { fetchGoogleCalendars, setGoogleCalendars } = await import(
-              '@/lib/googleCalendar'
-            ).then((m) => ({ ...m, setGoogleCalendars: useSyncStore.getState().setGoogleCalendars }));
-            try {
-              const calendars = await fetchGoogleCalendars(PLACEHOLDER_TOKEN);
-              setGoogleCalendars(calendars);
-            } catch (e) {
-              Alert.alert('Error', String(e));
-            }
-          },
-        },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      // Alert.alert is a no-op on web — just connect directly
+      doConnect();
+    } else {
+      Alert.alert(
+        'Connect Google Calendar',
+        'Google OAuth is not yet wired up (requires Person A\'s auth branch). Load mock calendars for testing?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Load mock', onPress: doConnect },
+        ]
+      );
+    }
   };
 
   const handleSyncNow = async () => {
@@ -123,6 +125,9 @@ export default function GoogleCalendarScreen() {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.content}
     >
+      {/* Hide expo-router's auto-generated Stack header — we draw our own */}
+      <Stack.Screen options={{ headerShown: false }} />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
