@@ -1,6 +1,8 @@
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, TextInput } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, TextInput, Alert } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useRouter } from 'expo-router';
 import { themes, type ThemeName } from '@/themes';
 import type { AIPersona } from '@/types';
 
@@ -27,6 +29,15 @@ export default function SettingsScreen() {
     aiPersona, timezone, timezoneAutoDetect, companionName, voiceLocale,
     setPersona, setTimezoneAutoDetect, setCompanionName, setVoiceLocale,
   } = useSettingsStore();
+  const { user, isGuest, signOut } = useAuthStore();
+  const router = useRouter();
+
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+    ]);
+  };
 
   return (
     <ScrollView
@@ -34,6 +45,51 @@ export default function SettingsScreen() {
       contentContainerStyle={styles.content}
     >
       <Text style={[styles.title, { color: theme.colors.text }]}>Settings</Text>
+
+      {/* Account Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Account
+      </Text>
+
+      <View
+        style={[
+          styles.optionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.borderRadius.md,
+          },
+        ]}
+      >
+        {user ? (
+          <>
+            <View style={styles.optionInfo}>
+              <Text style={[styles.optionName, { color: theme.colors.text }]}>
+                {user.email}
+              </Text>
+              <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>
+                Signed in — data syncs across devices
+              </Text>
+            </View>
+            <TouchableOpacity onPress={handleSignOut}>
+              <Text style={{ color: theme.colors.accent, fontSize: 14, fontWeight: '600' }}>
+                Sign Out
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <View style={styles.optionInfo}>
+              <Text style={[styles.optionName, { color: theme.colors.text }]}>
+                Guest Mode
+              </Text>
+              <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>
+                Sign in to sync your data across devices
+              </Text>
+            </View>
+          </>
+        )}
+      </View>
 
       {/* Theme Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>

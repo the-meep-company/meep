@@ -15,10 +15,25 @@ interface TaskState {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleStatus: (id: string) => void;
+  setTasks: (tasks: Task[]) => void;
 
   // Selectors
   getFilteredTasks: () => Task[];
   getSubtasks: (parentId: string) => Task[];
+}
+
+function syncTask(task: Task) {
+  const { useAuthStore } = require('./authStore');
+  const { pushTask } = require('@/lib/sync');
+  const user = useAuthStore.getState().user;
+  if (user) pushTask(task, user.id).catch(() => {});
+}
+
+function syncDeleteTask(id: string) {
+  const { useAuthStore } = require('./authStore');
+  const { deleteRemoteTask } = require('@/lib/sync');
+  const user = useAuthStore.getState().user;
+  if (user) deleteRemoteTask(id).catch(() => {});
 }
 
 export const useTaskStore = create<TaskState>()(
@@ -29,30 +44,44 @@ export const useTaskStore = create<TaskState>()(
 
       setFilter: (filter) => set({ filter }),
 
-      addTask: (task) =>
-        set((state) => ({ tasks: [...state.tasks, task] })),
+      addTask: (task) => {
+        set((state) => ({ tasks: [...state.tasks, task] }));
+        syncTask(task);
+      },
 
-      updateTask: (id, updates) =>
+      updateTask: (id, updates) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id ? { ...t, ...updates, updatedAt: new Date() } : t
           ),
-        })),
+        }));
+        const updated = get().tasks.find((t) => t.id === id);
+        if (updated) syncTask(updated);
+      },
 
-      deleteTask: (id) =>
+      deleteTask: (id) => {
+        // Also collect subtask IDs to delete remotely
+        const subtaskIds = get().tasks.filter((t) => t.parentTaskId === id).map((t) => t.id);
         set((state) => ({
-          // Also delete any subtasks
           tasks: state.tasks.filter((t) => t.id !== id && t.parentTaskId !== id),
-        })),
+        }));
+        syncDeleteTask(id);
+        subtaskIds.forEach(syncDeleteTask);
+      },
 
-      toggleStatus: (id) =>
+      toggleStatus: (id) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
               ? { ...t, status: (t.status === 'done' ? 'todo' : 'done') as TaskStatus, updatedAt: new Date() }
               : t
           ),
-        })),
+        }));
+        const updated = get().tasks.find((t) => t.id === id);
+        if (updated) syncTask(updated);
+      },
+
+      setTasks: (tasks) => set({ tasks }),
 
       getFilteredTasks: () => {
         const { tasks, filter } = get();

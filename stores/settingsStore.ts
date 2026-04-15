@@ -22,6 +22,24 @@ const defaultTimezone =
     ? Intl.DateTimeFormat().resolvedOptions().timeZone
     : 'Europe/London';
 
+function syncSettings() {
+  const { useAuthStore } = require('./authStore');
+  const { pushSettings } = require('@/lib/sync');
+  const { useThemeStore } = require('./themeStore');
+  const user = useAuthStore.getState().user;
+  if (!user) return;
+  const s = useSettingsStore.getState();
+  const theme = useThemeStore.getState().themeName;
+  pushSettings(user.id, {
+    aiPersona: s.aiPersona,
+    timezone: s.timezone,
+    timezoneAutoDetect: s.timezoneAutoDetect,
+    companionName: s.companionName,
+    voiceLocale: s.voiceLocale,
+    theme,
+  }).catch(() => {});
+}
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
@@ -31,11 +49,11 @@ export const useSettingsStore = create<SettingsState>()(
       companionName: 'Meep',
       voiceLocale: 'en-US',
 
-      setPersona: (persona) => set({ aiPersona: persona }),
-      setTimezone: (tz) => set({ timezone: tz }),
-      setTimezoneAutoDetect: (v) => set({ timezoneAutoDetect: v }),
-      setCompanionName: (name) => set({ companionName: name }),
-      setVoiceLocale: (locale) => set({ voiceLocale: locale }),
+      setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
+      setTimezone: (tz) => { set({ timezone: tz }); syncSettings(); },
+      setTimezoneAutoDetect: (v) => { set({ timezoneAutoDetect: v }); syncSettings(); },
+      setCompanionName: (name) => { set({ companionName: name }); syncSettings(); },
+      setVoiceLocale: (locale) => { set({ voiceLocale: locale }); syncSettings(); },
     }),
     {
       name: 'meep-settings',
