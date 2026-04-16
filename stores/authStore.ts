@@ -7,16 +7,22 @@ import { useHabitStore } from './habitStore';
 import { useGoalStore } from './goalStore';
 import { useSettingsStore } from './settingsStore';
 import { useThemeStore } from './themeStore';
+import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import type { User, Session } from '@supabase/supabase-js';
 import type { AIPersona } from '@/types';
 
-WebBrowser.maybeCompleteAuthSession();
+// Only needed for the native popup OAuth flow — on web the browser handles session
+// restoration via detectSessionInUrl and this would throw a cross-origin error.
+if (Platform.OS !== 'web') {
+  WebBrowser.maybeCompleteAuthSession();
+}
 
 interface AuthState {
   user: User | null;
   session: Session | null;
+  googleToken: string | null;
   isLoading: boolean;
   isGuest: boolean;
 
@@ -31,6 +37,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   session: null,
+  googleToken: null,
   isLoading: true,
   isGuest: false,
 
@@ -38,7 +45,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        set({ user: session.user, session, isLoading: false });
+        set({ user: session.user, session, googleToken: session.provider_token ?? null, isLoading: false });
         // Sync data on app launch if logged in
         performSync(session.user.id);
       } else {
@@ -51,6 +58,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         set({
           user: session?.user ?? null,
           session: session ?? null,
+          googleToken: session?.provider_token ?? null,
         });
         // Sync when user signs in (not on token refresh)
         if (session?.user && !prev) {
@@ -63,23 +71,44 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   signInWithGoogle: async () => {
+    const scopes = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events';
+
+    if (Platform.OS === 'web') {
+      // Web: full-page redirect — Supabase detects the session from the URL hash on return
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          scopes,
+        },
+      });
+      if (error) throw error;
+      // Browser redirects away; onAuthStateChange fires on return and sets googleToken
+      return;
+    }
+
+    // Native: popup flow via expo-web-browser
     const redirectUrl = AuthSession.makeRedirectUri();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: redirectUrl },
+      options: { redirectTo: redirectUrl, scopes },
     });
 
     if (error) throw error;
     if (data?.url) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
       if (result.type === 'success' && result.url) {
-        // Extract tokens from the redirect URL
+        // Extract tokens from the redirect URL hash
         const url = new URL(result.url);
         const params = new URLSearchParams(url.hash.substring(1));
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
+        const providerToken = params.get('provider_token');
         if (accessToken && refreshToken) {
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        }
+        if (providerToken) {
+          set({ googleToken: providerToken });
         }
       }
     }

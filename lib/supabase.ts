@@ -20,6 +20,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     storage: isSSR ? noopStorage : AsyncStorage,
     autoRefreshToken: !isSSR,
     persistSession: !isSSR,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web' && !isSSR,
   },
 });

@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useEffect, useRef } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -21,8 +22,8 @@ import { fetchGoogleCalendars, performSync } from '@/lib/googleCalendar';
 export default function GoogleCalendarScreen() {
   const router = useRouter();
   const { theme } = useThemeStore();
-  const { session, signInWithGoogle } = useAuthStore();
-  const accessToken = session?.provider_token ?? null;
+  const { googleToken, signInWithGoogle } = useAuthStore();
+  const accessToken = googleToken;
 
   const {
     googleCalendars,
@@ -40,15 +41,27 @@ export default function GoogleCalendarScreen() {
   const isConnected = googleCalendars.length > 0;
   const { isSyncing, lastSyncAt, syncError } = syncState;
 
-  // Persist sync tokens across syncs (stored in memory for now; move to
-  // syncStore persistence if you want them to survive app restarts)
-  const syncTokensRef = { current: {} as Record<string, string> };
+  // Persist sync tokens across syncs (useRef so they survive re-renders)
+  const syncTokensRef = useRef<Record<string, string>>({});
+
+  // Auto-fetch calendars whenever we have a token but haven't loaded calendars yet.
+  // This covers two cases:
+  //  1. User logged in with Google on the login screen (redirect flow) and lands here
+  //  2. User clicked Connect on this screen, was redirected to Google, and came back
+  useEffect(() => {
+    if (googleToken && googleCalendars.length === 0) {
+      fetchGoogleCalendars(googleToken)
+        .then((calendars) => useSyncStore.getState().setGoogleCalendars(calendars))
+        .catch((e) => setSyncError(String(e)));
+    }
+  }, [googleToken]);
 
   const handleConnect = async () => {
     try {
       await signInWithGoogle();
-      if (session?.provider_token) {
-        const calendars = await fetchGoogleCalendars(session.provider_token);
+      const freshToken = useAuthStore.getState().googleToken;
+      if (freshToken) {
+        const calendars = await fetchGoogleCalendars(freshToken);
         useSyncStore.getState().setGoogleCalendars(calendars);
       }
     } catch (e) {
