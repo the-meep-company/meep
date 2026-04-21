@@ -30,10 +30,10 @@ Parse the user's text and output ONLY valid JSON matching this exact schema:
       "type": "event" | "task" | "goal" | "habit",
       "confidence": 0.0 to 1.0,
       "raw": "the exact text snippet this item came from",
-      "event": { "title": string, "description": string | null, "startTime": "ISO 8601", "endTime": "ISO 8601", "allDay": boolean, "location": string | null, "color": "#hex" } | null,
-      "task": { "title": string, "description": string | null, "dueDate": "ISO 8601" | null, "priority": 1-4, "estimatedMinutes": number, "category": string | null, "color": "#hex" } | null,
+      "event": { "title": string, "description": string | null, "startTime": "ISO 8601", "endTime": "ISO 8601", "allDay": boolean, "location": string | null, "color": null } | null,
+      "task": { "title": string, "description": string | null, "dueDate": "ISO 8601" | null, "priority": 1-4, "estimatedMinutes": number, "category": string | null, "color": null } | null,
       "goal": { "title": string, "description": string | null, "targetDate": "ISO 8601" | null, "category": string | null } | null,
-      "habit": { "title": string, "description": string | null, "frequency": "daily" | "weekdays" | "weekends" | "custom", "customDays": [0-6] | null, "startTime": "HH:mm", "durationMinutes": number, "color": "#hex" } | null
+      "habit": { "title": string, "description": string | null, "frequency": "daily" | "weekdays" | "weekends" | "custom", "customDays": [0-6] | null, "startTime": "HH:mm", "durationMinutes": number, "color": null } | null
     }
   ],
   "summary": "Brief summary of what was extracted",
@@ -53,7 +53,7 @@ Inference rules:
 - If ambiguous between types, prefer task with lower confidence
 - For habits with "3x a week", use frequency "custom" with 3 spread-out days (e.g. Mon/Wed/Fri)
 - Default habit time: morning habits → "07:00", afternoon → "14:00", evening → "19:00"
-- Use these colors: events → "#2563EB", tasks → "#10B981", goals → "#8B5CF6", habits → "#F59E0B"
+- Always set color to null for all items; the client will assign colors based on user preferences
 ${eventsContext}
 
 Output ONLY the JSON object. No markdown, no explanation, no code fences.`;

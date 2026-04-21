@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Switch, TextInput, Alert } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -7,6 +8,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { themes, type ThemeName } from '@/themes';
 import type { AIPersona } from '@/types';
+import { speak, getAvailableVoices } from '@/lib/tts';
+import type { Voice } from 'expo-speech';
 
 const VOICE_LOCALES: { value: string; label: string }[] = [
   { value: 'en-US', label: 'English (US)' },
@@ -30,10 +33,17 @@ export default function SettingsScreen() {
   const { theme, themeName, setTheme } = useThemeStore();
   const {
     aiPersona, timezone, timezoneAutoDetect, companionName, voiceLocale,
+    ttsEnabled, ttsAutoRead, ttsVoice,
     setPersona, setTimezoneAutoDetect, setCompanionName, setVoiceLocale,
+    setTtsEnabled, setTtsAutoRead, setTtsVoice,
   } = useSettingsStore();
   const { user, isGuest, signOut } = useAuthStore();
   const { googleCalendars, syncState } = useSyncStore();
+  const [availableVoices, setAvailableVoices] = useState<Voice[]>([]);
+
+  useEffect(() => {
+    getAvailableVoices().then(setAvailableVoices);
+  }, []);
 
   const isGoogleConnected = googleCalendars.length > 0;
   const googleStatusLabel = isGoogleConnected
@@ -264,6 +274,116 @@ export default function SettingsScreen() {
         />
       </View>
 
+      {/* Voice / TTS Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Voice
+      </Text>
+
+      {/* TTS Enabled */}
+      <View
+        style={[
+          styles.optionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.borderRadius.md,
+          },
+        ]}
+      >
+        <View style={styles.optionInfo}>
+          <Text style={[styles.optionName, { color: theme.colors.text }]}>Text-to-Speech</Text>
+          <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>
+            Read assistant messages aloud
+          </Text>
+        </View>
+        <Switch
+          value={ttsEnabled}
+          onValueChange={setTtsEnabled}
+          trackColor={{ true: theme.colors.primary }}
+        />
+      </View>
+
+      {/* Auto-Read */}
+      {ttsEnabled && (
+        <View
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.borderRadius.md,
+            },
+          ]}
+        >
+          <View style={styles.optionInfo}>
+            <Text style={[styles.optionName, { color: theme.colors.text }]}>Auto-Read</Text>
+            <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>
+              Automatically read every new reply
+            </Text>
+          </View>
+          <Switch
+            value={ttsAutoRead}
+            onValueChange={setTtsAutoRead}
+            trackColor={{ true: theme.colors.primary }}
+          />
+        </View>
+      )}
+
+      {/* Voice Picker */}
+      {ttsEnabled && availableVoices.length > 0 && (
+        <>
+          <Text style={[styles.voicePickerLabel, { color: theme.colors.textSecondary }]}>
+            Voice
+          </Text>
+          {availableVoices.slice(0, 10).map((v) => (
+            <TouchableOpacity
+              key={v.identifier}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: ttsVoice === v.identifier ? theme.colors.primaryLight : theme.colors.surface,
+                  borderColor: ttsVoice === v.identifier ? theme.colors.primary : theme.colors.border,
+                  borderRadius: theme.borderRadius.md,
+                },
+              ]}
+              onPress={() => setTtsVoice(v.identifier)}
+            >
+              <View style={styles.optionInfo}>
+                <Text style={[styles.optionName, { color: theme.colors.text }]}>{v.name}</Text>
+                <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>{v.language}</Text>
+              </View>
+              {ttsVoice === v.identifier && (
+                <Text style={{ color: theme.colors.primary, fontSize: 18 }}>✓</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </>
+      )}
+
+      {/* Test Voice */}
+      {ttsEnabled && (
+        <TouchableOpacity
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.borderRadius.md,
+              justifyContent: 'center',
+            },
+          ]}
+          onPress={() =>
+            speak(`Hi, I'm ${companionName}! How can I help you today?`, aiPersona, {
+              voice: ttsVoice ?? undefined,
+              language: voiceLocale,
+            })
+          }
+        >
+          <FontAwesome name="volume-up" size={16} color={theme.colors.primary} style={{ marginRight: 12 }} />
+          <Text style={[styles.optionName, { color: theme.colors.primary }]}>Test voice</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Google Calendar Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
         Integrations
@@ -348,5 +468,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 2,
     padding: 0,
+  },
+  voicePickerLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 8,
+    marginTop: 8,
   },
 });

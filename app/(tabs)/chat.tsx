@@ -14,6 +14,7 @@ import { confirmAndSaveItem, confirmAndSaveAll } from '@/lib/confirmItems';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import { autoScheduleTasks } from '@/lib/scheduler';
 import { collectTaskPattern } from '@/lib/patternLearning';
+import { speak, stopSpeaking } from '@/lib/tts';
 import BrainDumpInput from '@/components/braindump/BrainDumpInput';
 import ParsedItemsList from '@/components/braindump/ParsedItemsList';
 import ChatBubble from '@/components/braindump/ChatBubble';
@@ -33,7 +34,7 @@ export default function MeepScreen() {
     confirmItem, confirmAllItems, setProcessing, clearMessages,
     startNewSession, endSession,
   } = useChatStore();
-  const { aiPersona, timezone, companionName } = useSettingsStore();
+  const { aiPersona, timezone, companionName, ttsEnabled, ttsAutoRead, ttsVoice, voiceLocale, setTtsAutoRead } = useSettingsStore();
 
   const [screenMode, setScreenMode] = useState<ScreenMode>('input');
   const [summary, setSummary] = useState('');
@@ -42,6 +43,7 @@ export default function MeepScreen() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
   const [actionStatuses, setActionStatuses] = useState<Record<string, 'accepted' | 'rejected'>>({});
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   // ===== Brain Dump Handlers (unchanged) =====
@@ -257,11 +259,16 @@ export default function MeepScreen() {
   };
 
   const handleBackFromChat = () => {
+    stopSpeaking();
+    setSpeakingMessageId(null);
     endSession();
     setScreenMode('input');
   };
 
   const handleChatSend = async (text: string) => {
+    stopSpeaking();
+    setSpeakingMessageId(null);
+
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -287,6 +294,14 @@ export default function MeepScreen() {
         timestamp: new Date(),
       };
       addMessage(assistantMsg);
+
+      if (ttsEnabled && ttsAutoRead) {
+        setSpeakingMessageId(assistantMsg.id);
+        speak(assistantMsg.content, aiPersona, {
+          voice: ttsVoice ?? undefined,
+          language: voiceLocale,
+        });
+      }
     } catch (err) {
       const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -369,7 +384,23 @@ export default function MeepScreen() {
               <FontAwesome name="chevron-left" size={16} color={theme.colors.primary} />
             </TouchableOpacity>
             <Text style={[styles.title, { color: theme.colors.text }]}>{companionName}</Text>
-            <TouchableOpacity onPress={handleStartChat}>
+            {ttsEnabled && (
+              <TouchableOpacity
+                onPress={() => setTtsAutoRead(!ttsAutoRead)}
+                style={[
+                  styles.autoReadBtn,
+                  { backgroundColor: ttsAutoRead ? theme.colors.primary + '20' : 'transparent' },
+                ]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <FontAwesome
+                  name="volume-up"
+                  size={16}
+                  color={ttsAutoRead ? theme.colors.primary : theme.colors.textTertiary}
+                />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleStartChat} style={{ marginLeft: 8 }}>
               <Text style={[styles.newButton, { color: theme.colors.primary }]}>New Chat</Text>
             </TouchableOpacity>
           </>
@@ -423,7 +454,12 @@ export default function MeepScreen() {
 
             {messages.map((msg) => (
               <View key={msg.id}>
-                <ChatBubble message={msg} />
+                <ChatBubble
+                  message={msg}
+                  speakingMessageId={speakingMessageId}
+                  onSpeakStart={setSpeakingMessageId}
+                  onSpeakEnd={() => setSpeakingMessageId(null)}
+                />
                 {msg.actions && msg.actions.length > 0 && (
                   <View style={styles.actionsSection}>
                     {msg.actions.map((action, idx) => {
@@ -566,6 +602,10 @@ const styles = StyleSheet.create({
   newButton: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  autoReadBtn: {
+    padding: 6,
+    borderRadius: 8,
   },
   inputContainer: {
     flex: 1,
