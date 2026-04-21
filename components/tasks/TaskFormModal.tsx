@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type Task, type TaskPriority } from '@/types';
 
 interface TaskFormModalProps {
@@ -33,12 +34,14 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
   const handleSave = () => {
     if (!title.trim()) return;
 
+    const trimmedCategory = category.trim();
+
     if (editTask) {
       updateTask(editTask.id, {
         title: title.trim(),
         description: description.trim() || undefined,
         priority,
-        category: category.trim() || undefined,
+        category: trimmedCategory || undefined,
         color: selectedColor,
       });
     } else {
@@ -47,7 +50,7 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
         title: title.trim(),
         description: description.trim() || undefined,
         priority,
-        category: category.trim() || undefined,
+        category: trimmedCategory || undefined,
         color: selectedColor,
         status: 'todo',
         createdAt: new Date(),
@@ -55,6 +58,17 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
       };
       addTask(newTask);
     }
+
+    // Learn color preference when the user has made a meaningful manual choice
+    if (trimmedCategory) {
+      const isMeaningfulChange = editTask
+        ? selectedColor !== editTask.color
+        : selectedColor !== EVENT_COLORS[0];
+      if (isMeaningfulChange) {
+        useColorStore.getState().learnColorPreference(trimmedCategory, selectedColor);
+      }
+    }
+
     resetAndClose();
   };
 

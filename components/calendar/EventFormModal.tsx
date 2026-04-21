@@ -6,6 +6,7 @@ import {
 import { format, addHours, setHours, setMinutes } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
+import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type CalendarEvent } from '@/types';
 
 interface EventFormModalProps {
@@ -69,6 +70,19 @@ export default function EventFormModal({
       };
       addEvent(newEvent);
     }
+
+    // Learn color preference when the user has made a meaningful manual choice.
+    // Events have no category field, so key learning off the title.
+    const trimmedTitle = title.trim();
+    if (trimmedTitle) {
+      const isMeaningfulChange = editEvent
+        ? selectedColor !== editEvent.color
+        : selectedColor !== EVENT_COLORS[0];
+      if (isMeaningfulChange) {
+        useColorStore.getState().learnColorPreference(trimmedTitle, selectedColor);
+      }
+    }
+
     resetAndClose();
   };
 
