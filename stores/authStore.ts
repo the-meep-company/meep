@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { syncAll, pushSettings } from '@/lib/sync';
 import { useCalendarStore } from './calendarStore';
@@ -12,6 +13,8 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import type { User, Session } from '@supabase/supabase-js';
 import type { AIPersona } from '@/types';
+
+const GOOGLE_TOKEN_KEY = 'meep_google_token';
 
 // Only needed for the native popup OAuth flow — on web the browser handles session
 // restoration via detectSessionInUrl and this would throw a cross-origin error.
@@ -45,7 +48,18 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        set({ user: session.user, session, googleToken: session.provider_token ?? null, isLoading: false });
+        // provider_token is only present right after OAuth sign-in, not on
+        // session restore. Fall back to our persisted copy.
+        const freshProviderToken = session.provider_token ?? null;
+        const storedToken = await AsyncStorage.getItem(GOOGLE_TOKEN_KEY);
+        const googleToken = freshProviderToken ?? storedToken;
+
+        if (freshProviderToken) {
+          // Persist the fresh token so it survives reloads
+          await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, freshProviderToken);
+        }
+
+        set({ user: session.user, session, googleToken, isLoading: false });
         // Sync data on app launch if logged in
         performSync(session.user.id);
       } else {
@@ -53,12 +67,20 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
 
       // Listen for auth changes
-      supabase.auth.onAuthStateChange((_event, session) => {
+      supabase.auth.onAuthStateChange(async (_event, session) => {
         const prev = get().user;
+        const freshProviderToken = session?.provider_token ?? null;
+
+        // Persist new provider token when available (fresh OAuth sign-in)
+        if (freshProviderToken) {
+          await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, freshProviderToken);
+        }
+
         set({
           user: session?.user ?? null,
           session: session ?? null,
-          googleToken: session?.provider_token ?? null,
+          // Keep existing googleToken if provider_token isn't in this event
+          googleToken: freshProviderToken ?? get().googleToken,
         });
         // Sync when user signs in (not on token refresh)
         if (session?.user && !prev) {
@@ -108,6 +130,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
         }
         if (providerToken) {
+          await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, providerToken);
           set({ googleToken: providerToken });
         }
       }
@@ -127,8 +150,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   signOut: async () => {
+    await AsyncStorage.removeItem(GOOGLE_TOKEN_KEY);
     await supabase.auth.signOut();
-    set({ user: null, session: null, isGuest: false });
+    set({ user: null, session: null, googleToken: null, isGuest: false });
   },
 
   continueAsGuest: () => {

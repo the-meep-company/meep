@@ -71,8 +71,14 @@ export default function GoogleCalendarScreen() {
 
   const handleSyncNow = async () => {
     if (!isConnected || isSyncing) return;
+
+    if (!accessToken) {
+      setSyncError('Google session expired. Please disconnect and reconnect.');
+      return;
+    }
+
     await performSync({
-      accessToken: accessToken ?? '',
+      accessToken,
       googleCalendars,
       selectedCalendarIds,
       syncTokens: syncTokensRef.current,
@@ -85,7 +91,12 @@ export default function GoogleCalendarScreen() {
       },
       onSyncError: (err) => {
         setSyncing(false);
-        setSyncError(err);
+        // Surface a helpful message for expired tokens
+        if (err.includes('401')) {
+          setSyncError('Google session expired. Please disconnect and reconnect to refresh your token.');
+        } else {
+          setSyncError(err);
+        }
       },
       batchUpsertEvents,
       setLastSync,
@@ -93,23 +104,28 @@ export default function GoogleCalendarScreen() {
   };
 
   const handleDisconnect = () => {
-    Alert.alert(
-      'Disconnect Google Calendar',
-      'This will remove all synced Google events from Meep. Your Google Calendar is not affected.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disconnect',
-          style: 'destructive',
-          onPress: () => {
-            // Remove Google-sourced events from calendarStore
-            const remaining = events.filter((e) => e.source !== 'google');
-            batchUpsertEvents(remaining, []);
-            clearSync();
-          },
-        },
-      ]
-    );
+    const doDisconnect = () => {
+      // Remove Google-sourced events from calendarStore
+      const remaining = events.filter((e) => e.source !== 'google');
+      batchUpsertEvents(remaining, []);
+      clearSync();
+    };
+
+    if (Platform.OS === 'web') {
+      // Alert.alert doesn't work on web — use window.confirm
+      if (window.confirm('Disconnect Google Calendar?\n\nThis will remove all synced Google events from Meep. Your Google Calendar is not affected.')) {
+        doDisconnect();
+      }
+    } else {
+      Alert.alert(
+        'Disconnect Google Calendar',
+        'This will remove all synced Google events from Meep. Your Google Calendar is not affected.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Disconnect', style: 'destructive', onPress: doDisconnect },
+        ]
+      );
+    }
   };
 
   const lastSyncLabel = lastSyncAt

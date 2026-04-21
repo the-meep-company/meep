@@ -14,7 +14,7 @@ import type { CalendarEvent } from '@/types';
 
 export default function CalendarScreen() {
   const { theme } = useThemeStore();
-  const { session } = useAuthStore();
+  const { googleToken } = useAuthStore();
   const { currentView, events, batchUpsertEvents } = useCalendarStore();
   const {
     googleCalendars,
@@ -35,10 +35,10 @@ export default function CalendarScreen() {
   // Auto-sync on mount when Google is connected
   useEffect(() => {
     const isConnected = googleCalendars.length > 0 && selectedCalendarIds.length > 0;
-    if (!isConnected || syncState.isSyncing) return;
+    if (!isConnected || syncState.isSyncing || !googleToken) return;
 
     performSync({
-      accessToken: session?.provider_token ?? '',
+      accessToken: googleToken ?? '',
       googleCalendars,
       selectedCalendarIds,
       syncTokens: syncTokensRef.current,

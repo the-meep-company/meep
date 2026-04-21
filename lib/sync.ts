@@ -378,7 +378,16 @@ export async function deleteRemoteGoal(id: string): Promise<void> {
 
 // ===== Merge helper =====
 
-function mergeById<T extends { id: string; updatedAt?: Date; createdAt: Date }>(
+/** Safely extract a timestamp from a Date object or ISO string */
+function toTime(value: Date | string | undefined | null): number {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  // Handle ISO string (from persisted stores or Supabase)
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function mergeById<T extends { id: string; updatedAt?: Date | string; createdAt: Date | string }>(
   local: T[],
   remote: T[],
 ): T[] {
@@ -395,8 +404,8 @@ function mergeById<T extends { id: string; updatedAt?: Date; createdAt: Date }>(
     if (!existing) {
       map.set(item.id, item);
     } else {
-      const localTime = (item.updatedAt ?? item.createdAt).getTime();
-      const remoteTime = (existing.updatedAt ?? existing.createdAt).getTime();
+      const localTime = toTime(item.updatedAt ?? item.createdAt);
+      const remoteTime = toTime(existing.updatedAt ?? existing.createdAt);
       if (localTime > remoteTime) {
         map.set(item.id, item);
       }
