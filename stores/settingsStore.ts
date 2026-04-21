@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AIPersona } from '@/types';
+import type { AIPersona, WidgetCalendarView } from '@/types';
 
 interface SettingsState {
   aiPersona: AIPersona;
@@ -12,6 +12,8 @@ interface SettingsState {
   ttsEnabled: boolean;
   ttsAutoRead: boolean;
   ttsVoice: string | null;
+  widgetCalendarView: WidgetCalendarView;
+  widgetCategory: string | null;
 
   setPersona: (persona: AIPersona) => void;
   setTimezone: (tz: string) => void;
@@ -21,6 +23,8 @@ interface SettingsState {
   setTtsEnabled: (v: boolean) => void;
   setTtsAutoRead: (v: boolean) => void;
   setTtsVoice: (voice: string | null) => void;
+  setWidgetCalendarView: (view: WidgetCalendarView) => void;
+  setWidgetCategory: (category: string | null) => void;
 }
 
 const defaultTimezone =
@@ -57,6 +61,8 @@ export const useSettingsStore = create<SettingsState>()(
       ttsEnabled: true,
       ttsAutoRead: false,
       ttsVoice: null,
+      widgetCalendarView: 'daily',
+      widgetCategory: null,
 
       setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
       setTimezone: (tz) => { set({ timezone: tz }); syncSettings(); },
@@ -66,6 +72,8 @@ export const useSettingsStore = create<SettingsState>()(
       setTtsEnabled: (v) => set({ ttsEnabled: v }),
       setTtsAutoRead: (v) => set({ ttsAutoRead: v }),
       setTtsVoice: (voice) => set({ ttsVoice: voice }),
+      setWidgetCalendarView: (view) => set({ widgetCalendarView: view }),
+      setWidgetCategory: (category) => set({ widgetCategory: category }),
     }),
     {
       name: 'meep-settings',
@@ -79,6 +87,8 @@ export const useSettingsStore = create<SettingsState>()(
         ttsEnabled: state.ttsEnabled,
         ttsAutoRead: state.ttsAutoRead,
         ttsVoice: state.ttsVoice,
+        widgetCalendarView: state.widgetCalendarView,
+        widgetCategory: state.widgetCategory,
       }),
     }
   )

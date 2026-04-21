@@ -10,6 +10,7 @@ import { themes, type ThemeName } from '@/themes';
 import type { AIPersona } from '@/types';
 import { speak, getAvailableVoices } from '@/lib/tts';
 import type { Voice } from 'expo-speech';
+import { WidgetSettingsSection } from '@/components/settings/WidgetSettingsSection';
 
 const VOICE_LOCALES: { value: string; label: string }[] = [
   { value: 'en-US', label: 'English (US)' },
@@ -279,7 +280,6 @@ export default function SettingsScreen() {
         Voice
       </Text>
 
-      {/* TTS Enabled */}
       <View
         style={[
           styles.optionCard,
@@ -303,7 +303,6 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* Auto-Read */}
       {ttsEnabled && (
         <View
           style={[
@@ -329,7 +328,6 @@ export default function SettingsScreen() {
         </View>
       )}
 
-      {/* Voice Picker */}
       {ttsEnabled && availableVoices.length > 0 && (
         <>
           <Text style={[styles.voicePickerLabel, { color: theme.colors.textSecondary }]}>
@@ -360,7 +358,6 @@ export default function SettingsScreen() {
         </>
       )}
 
-      {/* Test Voice */}
       {ttsEnabled && (
         <TouchableOpacity
           style={[
@@ -383,6 +380,17 @@ export default function SettingsScreen() {
           <Text style={[styles.optionName, { color: theme.colors.primary }]}>Test voice</Text>
         </TouchableOpacity>
       )}
+
+      {/* Widget Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Widget
+      </Text>
+
+      <Text style={[styles.widgetHint, { color: theme.colors.textSecondary }]}>
+        Choose what appears on your home screen widget.
+      </Text>
+
+      <WidgetSettingsSection />
 
       {/* Google Calendar Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
@@ -474,5 +482,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 8,
     marginTop: 8,
+  },
+  widgetHint: {
+    fontSize: 13,
+    marginBottom: 12,
   },
 });
