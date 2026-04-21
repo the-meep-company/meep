@@ -9,7 +9,6 @@
  */
 
 import { addMonths, subMonths } from 'date-fns';
-import { supabase } from '@/lib/supabase';
 import type { CalendarEvent, GoogleCalendarInfo } from '@/types';
 
 // ---- Google API response shapes (mirrored from Edge Function) ----
@@ -207,7 +206,62 @@ export async function fetchGoogleCalendars(
   }));
 }
 
-// ---- Call our gcal-import Edge Function + transform results ----
+// ---- Fetch all pages for a single calendar directly from Google API ----
+
+async function fetchCalendarEventsFromGoogle(
+  accessToken: string,
+  calendarId: string,
+  timeMin: string,
+  timeMax: string,
+  syncToken?: string
+): Promise<{ events: GoogleEvent[]; nextSyncToken: string | null }> {
+  const allEvents: GoogleEvent[] = [];
+  let pageToken: string | undefined;
+  let nextSyncToken: string | null = null;
+
+  do {
+    const params = new URLSearchParams({
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '250',
+    });
+
+    if (syncToken) {
+      params.set('syncToken', syncToken);
+    } else {
+      params.set('timeMin', timeMin);
+      params.set('timeMax', timeMax);
+    }
+
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const encodedId = encodeURIComponent(calendarId);
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodedId}/events?${params}`;
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error('Google session expired. Please disconnect and reconnect to refresh your token.');
+      }
+      const body = await res.text();
+      throw new Error(`Google Calendar API error ${res.status} for ${calendarId}: ${body}`);
+    }
+
+    const data: { items?: GoogleEvent[]; nextPageToken?: string; nextSyncToken?: string } =
+      await res.json();
+
+    if (data.items) allEvents.push(...data.items);
+    pageToken = data.nextPageToken;
+    if (data.nextSyncToken) nextSyncToken = data.nextSyncToken;
+  } while (pageToken);
+
+  return { events: allEvents, nextSyncToken };
+}
+
+// ---- Import events from Google Calendar API directly ----
 
 export async function importGoogleEvents(
   accessToken: string,
@@ -216,7 +270,6 @@ export async function importGoogleEvents(
   syncTokens?: Record<string, string>
 ): Promise<{ events: CalendarEvent[]; nextSyncTokens: Record<string, string> }> {
   if (accessToken === 'mock') {
-    // Return deterministic mock events for UI testing
     return {
       events: generateMockGoogleEvents(calendarColorMap),
       nextSyncTokens: {},
@@ -227,19 +280,32 @@ export async function importGoogleEvents(
   const timeMin = subMonths(now, 1).toISOString();
   const timeMax = addMonths(now, 3).toISOString();
 
-  const { data, error } = await supabase.functions.invoke('gcal-import', {
-    body: { accessToken, calendarIds, timeMin, timeMax, syncTokens },
-  });
-
-  if (error) throw new Error(`gcal-import Edge Function error: ${error.message}`);
-  if (data.error) throw new Error(`gcal-import: ${data.error}`);
-
-  const rawEvents: GoogleEvent[] = data.events ?? [];
-  const events = rawEvents.map((e) =>
-    transformGoogleEvent(e, calendarColorMap[e._calendarId] ?? '#4285F4')
+  const results = await Promise.allSettled(
+    calendarIds.map((id) =>
+      fetchCalendarEventsFromGoogle(accessToken, id, timeMin, timeMax, syncTokens?.[id]).then(
+        (r) => ({ calendarId: id, ...r })
+      )
+    )
   );
 
-  return { events, nextSyncTokens: data.nextSyncTokens ?? {} };
+  const allEvents: CalendarEvent[] = [];
+  const nextSyncTokens: Record<string, string> = {};
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      const { calendarId, events, nextSyncToken } = result.value;
+      const color = calendarColorMap[calendarId] ?? '#4285F4';
+      for (const e of events) {
+        allEvents.push(transformGoogleEvent({ ...e, _calendarId: calendarId }, color));
+      }
+      if (nextSyncToken) nextSyncTokens[calendarId] = nextSyncToken;
+    } else {
+      // Re-throw the first individual-calendar error so the UI sees it
+      throw result.reason;
+    }
+  }
+
+  return { events: allEvents, nextSyncTokens };
 }
 
 // ---- High-level sync orchestration ----
