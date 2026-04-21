@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AIPersona } from '@/types';
+import type { AIPersona, WidgetCalendarView } from '@/types';
 
 interface SettingsState {
   aiPersona: AIPersona;
@@ -9,12 +9,16 @@ interface SettingsState {
   timezoneAutoDetect: boolean;
   companionName: string;
   voiceLocale: string;
+  widgetCalendarView: WidgetCalendarView;
+  widgetCategory: string | null;
 
   setPersona: (persona: AIPersona) => void;
   setTimezone: (tz: string) => void;
   setTimezoneAutoDetect: (v: boolean) => void;
   setCompanionName: (name: string) => void;
   setVoiceLocale: (locale: string) => void;
+  setWidgetCalendarView: (view: WidgetCalendarView) => void;
+  setWidgetCategory: (category: string | null) => void;
 }
 
 const defaultTimezone =
@@ -48,12 +52,16 @@ export const useSettingsStore = create<SettingsState>()(
       timezoneAutoDetect: true,
       companionName: 'Meep',
       voiceLocale: 'en-US',
+      widgetCalendarView: 'daily',
+      widgetCategory: null,
 
       setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
       setTimezone: (tz) => { set({ timezone: tz }); syncSettings(); },
       setTimezoneAutoDetect: (v) => { set({ timezoneAutoDetect: v }); syncSettings(); },
       setCompanionName: (name) => { set({ companionName: name }); syncSettings(); },
       setVoiceLocale: (locale) => { set({ voiceLocale: locale }); syncSettings(); },
+      setWidgetCalendarView: (view) => set({ widgetCalendarView: view }),
+      setWidgetCategory: (category) => set({ widgetCategory: category }),
     }),
     {
       name: 'meep-settings',
@@ -64,6 +72,8 @@ export const useSettingsStore = create<SettingsState>()(
         timezoneAutoDetect: state.timezoneAutoDetect,
         companionName: state.companionName,
         voiceLocale: state.voiceLocale,
+        widgetCalendarView: state.widgetCalendarView,
+        widgetCategory: state.widgetCategory,
       }),
     }
   )

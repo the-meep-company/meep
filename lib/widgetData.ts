@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import SharedGroupPreferences from 'react-native-shared-group-preferences';
-import type { AIPersona, CalendarEvent, Task } from '@/types';
+import { addDays, startOfDay, endOfDay, startOfMonth, endOfMonth, format } from 'date-fns';
+import type { AIPersona, CalendarEvent, Task, WidgetCalendarView } from '@/types';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -23,11 +24,16 @@ export type WidgetTask = {
   id: string;
   title: string;
   priority: number;
+  category?: string;
 };
 
 export type WidgetPayload = {
   date: string;
+  calendarView: WidgetCalendarView;
+  selectedCategory: string | null;
   events: WidgetEvent[];
+  weekEvents: WidgetEvent[];
+  monthDots: string[];
   tasks: WidgetTask[];
   greeting: string;
 };
@@ -50,40 +56,93 @@ export function generateWidgetGreeting(
   return `${companionName}: you're on track for today.`;
 }
 
-function normalizeEvents(events: CalendarEvent[]): WidgetEvent[] {
-  const now = new Date();
-  return events
-    .map((event) => ({
-      id: event.id,
-      title: event.title,
-      startTime: new Date(event.startTime).toISOString(),
-      color: event.color,
-    }))
-    .filter((event) => new Date(event.startTime) >= now)
-    .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime))
-    .slice(0, 3);
+function toWidgetEvent(event: CalendarEvent): WidgetEvent {
+  return {
+    id: event.id,
+    title: event.title,
+    startTime: new Date(event.startTime).toISOString(),
+    color: event.color,
+  };
 }
 
-function normalizeTasks(tasks: Task[]): WidgetTask[] {
+// Today's upcoming events for daily view (max 5)
+function normalizeDailyEvents(events: CalendarEvent[]): WidgetEvent[] {
+  const now = new Date();
+  const todayEnd = endOfDay(now);
+  return events
+    .filter((e) => {
+      const start = new Date(e.startTime);
+      return start >= now && start <= todayEnd;
+    })
+    .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime))
+    .slice(0, 5)
+    .map(toWidgetEvent);
+}
+
+// Next 7 days' events for weekly view (max 21)
+function normalizeWeekEvents(events: CalendarEvent[]): WidgetEvent[] {
+  const now = new Date();
+  const weekEnd = endOfDay(addDays(now, 6));
+  return events
+    .filter((e) => {
+      const start = new Date(e.startTime);
+      return start >= startOfDay(now) && start <= weekEnd;
+    })
+    .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime))
+    .slice(0, 21)
+    .map(toWidgetEvent);
+}
+
+// Dates in the current month that have at least one event (YYYY-MM-DD strings)
+function normalizeMonthDots(events: CalendarEvent[]): string[] {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+  const dates = new Set<string>();
+  for (const event of events) {
+    const start = new Date(event.startTime);
+    if (start >= monthStart && start <= monthEnd) {
+      dates.add(format(start, 'yyyy-MM-dd'));
+    }
+  }
+  return Array.from(dates).sort();
+}
+
+function normalizeTasks(tasks: Task[], category: string | null): WidgetTask[] {
   return tasks
-    .filter((task) => !task.parentTaskId && task.status !== 'done')
+    .filter((task) => {
+      if (task.parentTaskId || task.status === 'done') return false;
+      if (category !== null && task.category !== category) return false;
+      return true;
+    })
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 3)
     .map((task) => ({
       id: task.id,
       title: task.title,
       priority: task.priority,
+      category: task.category,
     }));
 }
 
 export function buildWidgetPayload(): WidgetPayload {
-  const events = normalizeEvents(useCalendarStore.getState().events);
-  const tasks = normalizeTasks(useTaskStore.getState().tasks);
-  const { companionName, aiPersona } = useSettingsStore.getState();
+  const allEvents = useCalendarStore.getState().events;
+  const allTasks = useTaskStore.getState().tasks;
+  const { companionName, aiPersona, widgetCalendarView, widgetCategory } =
+    useSettingsStore.getState();
+
+  const events = normalizeDailyEvents(allEvents);
+  const weekEvents = normalizeWeekEvents(allEvents);
+  const monthDots = normalizeMonthDots(allEvents);
+  const tasks = normalizeTasks(allTasks, widgetCategory);
 
   return {
     date: new Date().toISOString(),
+    calendarView: widgetCalendarView,
+    selectedCategory: widgetCategory,
     events,
+    weekEvents,
+    monthDots,
     tasks,
     greeting: generateWidgetGreeting(events, tasks, companionName, aiPersona),
   };

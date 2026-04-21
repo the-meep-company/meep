@@ -79,6 +79,9 @@ export interface Goal {
 // ===== Calendar Views =====
 export type CalendarView = 'day' | 'week' | 'month';
 
+// ===== Widget =====
+export type WidgetCalendarView = 'daily' | 'weekly' | 'monthly';
+
 // ===== Utility =====
 export interface TimeSlot {
   hour: number;

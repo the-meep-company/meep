@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { themes, type ThemeName } from '@/themes';
 import type { AIPersona } from '@/types';
+import { WidgetSettingsSection } from '@/components/settings/WidgetSettingsSection';
 
 const VOICE_LOCALES: { value: string; label: string }[] = [
   { value: 'en-US', label: 'English (US)' },
@@ -264,6 +265,17 @@ export default function SettingsScreen() {
         />
       </View>
 
+      {/* Widget Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Widget
+      </Text>
+
+      <Text style={[styles.widgetHint, { color: theme.colors.textSecondary }]}>
+        Choose what appears on your home screen widget.
+      </Text>
+
+      <WidgetSettingsSection />
+
       {/* Google Calendar Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
         Integrations
@@ -348,5 +360,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 2,
     padding: 0,
+  },
+  widgetHint: {
+    fontSize: 13,
+    marginBottom: 12,
   },
 });
