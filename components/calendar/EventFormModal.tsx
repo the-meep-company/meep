@@ -13,6 +13,7 @@ interface EventFormModalProps {
   initialDate?: Date;
   editEvent?: CalendarEvent | null;
   onClose: () => void;
+  onEventSaved?: (event: CalendarEvent) => void;
 }
 
 export default function EventFormModal({
@@ -20,6 +21,7 @@ export default function EventFormModal({
   initialDate,
   editEvent,
   onClose,
+  onEventSaved,
 }: EventFormModalProps) {
   const { theme } = useThemeStore();
   const { addEvent, updateEvent, deleteEvent } = useCalendarStore();
@@ -68,6 +70,7 @@ export default function EventFormModal({
         updatedAt: new Date(),
       };
       addEvent(newEvent);
+      onEventSaved?.(newEvent);
     }
     resetAndClose();
   };
