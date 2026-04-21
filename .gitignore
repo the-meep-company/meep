@@ -37,7 +37,7 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
-/ios
+/ios/*
 /android
 
 # supabase local cli cache

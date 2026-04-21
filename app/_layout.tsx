@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { useAuthStore } from '@/stores/authStore';
+import { initializeWidgetSync } from '@/lib/widgetSync';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -26,6 +27,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     initialize();
+  }, []);
+
+  useEffect(() => {
+    const cleanup = initializeWidgetSync();
+    return cleanup;
   }, []);
 
   useEffect(() => {

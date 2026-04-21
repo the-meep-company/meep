@@ -3,12 +3,15 @@ import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useThemeStore } from '@/stores/themeStore';
 import { useAuthStore } from '@/stores/authStore';
 
+const ENABLE_APPLE_SIGN_IN = process.env.EXPO_PUBLIC_ENABLE_APPLE_SIGN_IN === 'true';
+
 export default function LoginScreen() {
   const { theme } = useThemeStore();
-  const { signInWithGoogle, signInWithEmail, signUp, continueAsGuest } = useAuthStore();
+  const { signInWithGoogle, signInWithApple, signInWithEmail, signUp, continueAsGuest } = useAuthStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,6 +45,16 @@ export default function LoginScreen() {
     setLoading(false);
   };
 
+  const handleAppleSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInWithApple();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Apple sign-in failed');
+    }
+    setLoading(false);
+  };
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -66,6 +79,18 @@ export default function LoginScreen() {
             Continue with Google
           </Text>
         </TouchableOpacity>
+
+        {Platform.OS === 'ios' && ENABLE_APPLE_SIGN_IN ? (
+          <View style={styles.appleButtonWrap}>
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={12}
+              style={styles.appleButton}
+              onPress={handleAppleSignIn}
+            />
+          </View>
+        ) : null}
 
         {/* Divider */}
         <View style={styles.divider}>
@@ -177,6 +202,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
+  },
+  appleButtonWrap: {
+    marginBottom: 20,
+  },
+  appleButton: {
+    width: '100%',
+    height: 48,
   },
   dividerLine: {
     flex: 1,

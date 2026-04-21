@@ -11,10 +11,13 @@ import { useThemeStore } from './themeStore';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import type { User, Session } from '@supabase/supabase-js';
 import type { AIPersona } from '@/types';
 
 const GOOGLE_TOKEN_KEY = 'meep_google_token';
+const ENABLE_APPLE_SIGN_IN = process.env.EXPO_PUBLIC_ENABLE_APPLE_SIGN_IN === 'true';
 
 // Only needed for the native popup OAuth flow — on web the browser handles session
 // restoration via detectSessionInUrl and this would throw a cross-origin error.
@@ -31,6 +34,7 @@ interface AuthState {
 
   initialize: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
@@ -135,6 +139,50 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         }
       }
     }
+  },
+
+  signInWithApple: async () => {
+    if (!ENABLE_APPLE_SIGN_IN) {
+      throw new Error('Apple Sign-In is currently disabled.');
+    }
+
+    if (Platform.OS !== 'ios') {
+      throw new Error('Apple Sign-In is only available on iOS.');
+    }
+
+    const rawNonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      rawNonce
+    );
+
+    let credential: AppleAuthentication.AppleAuthenticationCredential;
+    try {
+      credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+    } catch (err: any) {
+      if (err?.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+      throw err;
+    }
+
+    if (!credential.identityToken) {
+      throw new Error('Apple Sign-In did not return an identity token.');
+    }
+
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: credential.identityToken,
+      nonce: rawNonce,
+    });
+
+    if (error) throw error;
   },
 
   signInWithEmail: async (email, password) => {
