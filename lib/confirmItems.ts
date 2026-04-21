@@ -3,20 +3,18 @@ import { useTaskStore } from '@/stores/taskStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { usePatternStore } from '@/stores/patternStore';
+import { useColorStore } from '@/stores/colorStore';
 import { collectEventPattern, collectTaskPattern } from '@/lib/patternLearning';
+import { suggestColor } from '@/lib/colors';
 import type { ParsedItem, CalendarEvent, Task, Goal, Habit } from '@/types';
-import { EVENT_COLORS } from '@/types';
 
 function generateId(): string {
   return Date.now().toString() + Math.random().toString(36).slice(2, 7);
 }
 
-function pickColor(index: number): string {
-  return EVENT_COLORS[index % EVENT_COLORS.length];
-}
-
 export function confirmAndSaveItem(item: ParsedItem): void {
   const now = new Date();
+  const prefs = useColorStore.getState().getColorPreferences();
 
   switch (item.type) {
     case 'event': {
@@ -29,7 +27,7 @@ export function confirmAndSaveItem(item: ParsedItem): void {
         startTime: e.startTime ? new Date(e.startTime) : now,
         endTime: e.endTime ? new Date(e.endTime) : new Date(now.getTime() + 60 * 60 * 1000),
         allDay: e.allDay ?? false,
-        color: e.color || pickColor(0),
+        color: e.color || suggestColor(e.title, null, prefs),
         location: e.location,
         source: 'local',
         scheduleSource: 'ai',
@@ -50,7 +48,7 @@ export function confirmAndSaveItem(item: ParsedItem): void {
         dueDate: t.dueDate ? new Date(t.dueDate) : undefined,
         priority: t.priority ?? 3,
         category: t.category,
-        color: t.color || pickColor(1),
+        color: t.color || suggestColor(t.title, t.category, prefs),
         status: 'todo',
         estimatedMinutes: t.estimatedMinutes ?? 30,
         scheduleSource: 'ai',
@@ -88,7 +86,7 @@ export function confirmAndSaveItem(item: ParsedItem): void {
         customDays: h.customDays,
         startTime: h.startTime ?? '07:00',
         durationMinutes: h.durationMinutes ?? 30,
-        color: h.color || pickColor(6),
+        color: h.color || suggestColor(h.title, null, prefs),
         isActive: true,
         createdAt: now,
         updatedAt: now,

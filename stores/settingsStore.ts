@@ -9,12 +9,18 @@ interface SettingsState {
   timezoneAutoDetect: boolean;
   companionName: string;
   voiceLocale: string;
+  ttsEnabled: boolean;
+  ttsAutoRead: boolean;
+  ttsVoice: string | null;
 
   setPersona: (persona: AIPersona) => void;
   setTimezone: (tz: string) => void;
   setTimezoneAutoDetect: (v: boolean) => void;
   setCompanionName: (name: string) => void;
   setVoiceLocale: (locale: string) => void;
+  setTtsEnabled: (v: boolean) => void;
+  setTtsAutoRead: (v: boolean) => void;
+  setTtsVoice: (voice: string | null) => void;
 }
 
 const defaultTimezone =
@@ -48,12 +54,18 @@ export const useSettingsStore = create<SettingsState>()(
       timezoneAutoDetect: true,
       companionName: 'Meep',
       voiceLocale: 'en-US',
+      ttsEnabled: true,
+      ttsAutoRead: false,
+      ttsVoice: null,
 
       setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
       setTimezone: (tz) => { set({ timezone: tz }); syncSettings(); },
       setTimezoneAutoDetect: (v) => { set({ timezoneAutoDetect: v }); syncSettings(); },
       setCompanionName: (name) => { set({ companionName: name }); syncSettings(); },
       setVoiceLocale: (locale) => { set({ voiceLocale: locale }); syncSettings(); },
+      setTtsEnabled: (v) => set({ ttsEnabled: v }),
+      setTtsAutoRead: (v) => set({ ttsAutoRead: v }),
+      setTtsVoice: (voice) => set({ ttsVoice: voice }),
     }),
     {
       name: 'meep-settings',
@@ -64,6 +76,9 @@ export const useSettingsStore = create<SettingsState>()(
         timezoneAutoDetect: state.timezoneAutoDetect,
         companionName: state.companionName,
         voiceLocale: state.voiceLocale,
+        ttsEnabled: state.ttsEnabled,
+        ttsAutoRead: state.ttsAutoRead,
+        ttsVoice: state.ttsVoice,
       }),
     }
   )
