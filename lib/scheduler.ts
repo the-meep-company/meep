@@ -281,3 +281,45 @@ export function autoScheduleTasks(request: ScheduleRequest): ScheduleResult {
 
   return { placements, unplaceable };
 }
+
+// ===== Conflict Detection (Phase 5A) =====
+
+export interface ConflictingTask {
+  task: Task;
+  calendarEventId: string;
+  oldStart: Date;
+  oldEnd: Date;
+}
+
+export function detectConflictingTasks(
+  newEvent: CalendarEvent,
+  allTasks: Task[],
+  allEvents: CalendarEvent[]
+): ConflictingTask[] {
+  const newStart = new Date(newEvent.startTime);
+  const newEnd = new Date(newEvent.endTime);
+
+  const aiTasks = allTasks.filter(
+    (t) =>
+      t.scheduleSource === 'ai' &&
+      t.scheduledStart != null &&
+      t.scheduledEnd != null &&
+      (t.status === 'todo' || t.status === 'in_progress')
+  );
+
+  return aiTasks.flatMap((task) => {
+    const taskStart = new Date(task.scheduledStart!);
+    const taskEnd = new Date(task.scheduledEnd!);
+    if (!(isBefore(taskStart, newEnd) && isAfter(taskEnd, newStart))) return [];
+
+    const matchingEvent = allEvents.find(
+      (e) =>
+        e.scheduleSource === 'ai' &&
+        !e.isHabit &&
+        new Date(e.startTime).getTime() === taskStart.getTime() &&
+        new Date(e.endTime).getTime() === taskEnd.getTime()
+    );
+
+    return [{ task, calendarEventId: matchingEvent?.id ?? '', oldStart: taskStart, oldEnd: taskEnd }];
+  });
+}

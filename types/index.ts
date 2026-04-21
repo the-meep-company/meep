@@ -234,3 +234,14 @@ export interface FreeSlot {
   end: Date;
   durationMinutes: number;
 }
+
+export interface ReorganizePlacement {
+  task: Task;
+  calendarEventId: string;
+  oldStart: Date;
+  oldEnd: Date;
+  newStart: Date;
+  newEnd: Date;
+  reason: string;
+  confidence: number;
+}
