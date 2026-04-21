@@ -5,6 +5,8 @@ import {
 } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
+import { useHabitStore } from '@/stores/habitStore';
+import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import type { CalendarEvent } from '@/types';
 
 const HOUR_HEIGHT = 52;
@@ -18,6 +20,8 @@ interface WeekViewProps {
 export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProps) {
   const { theme } = useThemeStore();
   const { selectedDate, setSelectedDate, setView, getEventsForDate } = useCalendarStore();
+  const { getActiveHabits } = useHabitStore();
+  const activeHabits = getActiveHabits();
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 }); // Monday
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -134,7 +138,9 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
 
           {/* Event overlays per day column */}
           {days.map((day, dayIndex) => {
-            const events = getEventsForDate(day);
+            const realEvents = getEventsForDate(day);
+            const habitEvents = generateHabitEventsForDate(activeHabits, day);
+            const events = [...realEvents, ...habitEvents];
             return events.map((event) => {
               const pos = getEventStyle(event);
               const leftOffset = 48 + dayIndex * ((100 - 12) / 7); // approximate %
@@ -150,10 +156,12 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
                       height: pos.height,
                       left: `${8 + dayIndex * (92 / 7)}%`,
                       width: `${92 / 7 - 0.5}%`,
-                      backgroundColor: event.color + '33',
+                      backgroundColor: event.color + (event.isHabit ? '20' : '33'),
                       borderLeftColor: event.color,
                       borderRadius: theme.borderRadius.sm - 2,
+                      opacity: event.isHabit ? 0.85 : 1,
                     },
+                    event.isHabit && { borderStyle: 'dashed' },
                   ]}
                 >
                   <Text

@@ -22,10 +22,27 @@ interface CalendarState {
   addEvent: (event: CalendarEvent) => void;
   updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
   deleteEvent: (id: string) => void;
+  setEvents: (events: CalendarEvent[]) => void;
+  batchUpsertEvents: (events: CalendarEvent[], deletedIds?: string[]) => void;
 
   // Selectors
   getEventsForDate: (date: Date) => CalendarEvent[];
   getEventsForRange: (start: Date, end: Date) => CalendarEvent[];
+}
+
+function syncEvent(event: CalendarEvent) {
+  // Lazy imports to avoid circular dependency
+  const { useAuthStore } = require('./authStore');
+  const { pushEvent } = require('@/lib/sync');
+  const user = useAuthStore.getState().user;
+  if (user) pushEvent(event, user.id).catch(() => {});
+}
+
+function syncDeleteEvent(id: string) {
+  const { useAuthStore } = require('./authStore');
+  const { deleteRemoteEvent } = require('@/lib/sync');
+  const user = useAuthStore.getState().user;
+  if (user) deleteRemoteEvent(id).catch(() => {});
 }
 
 export const useCalendarStore = create<CalendarState>()(
@@ -53,18 +70,40 @@ export const useCalendarStore = create<CalendarState>()(
         else set({ selectedDate: subMonths(selectedDate, 1) });
       },
 
-      addEvent: (event) =>
-        set((state) => ({ events: [...state.events, event] })),
+      addEvent: (event) => {
+        set((state) => ({ events: [...state.events, event] }));
+        syncEvent(event);
+      },
 
-      updateEvent: (id, updates) =>
+      updateEvent: (id, updates) => {
         set((state) => ({
           events: state.events.map((e) =>
             e.id === id ? { ...e, ...updates, updatedAt: new Date() } : e
           ),
-        })),
+        }));
+        const updated = get().events.find((e) => e.id === id);
+        if (updated) syncEvent(updated);
+      },
 
-      deleteEvent: (id) =>
-        set((state) => ({ events: state.events.filter((e) => e.id !== id) })),
+      deleteEvent: (id) => {
+        set((state) => ({ events: state.events.filter((e) => e.id !== id) }));
+        syncDeleteEvent(id);
+      },
+
+      setEvents: (events) => set({ events }),
+
+      batchUpsertEvents: (incoming, deletedIds = []) =>
+        set((state) => {
+          const deletedSet = new Set(deletedIds);
+          const existingById = new Map(state.events.map((e) => [e.id, e]));
+          for (const event of incoming) {
+            existingById.set(event.id, event);
+          }
+          const result = [...existingById.values()].filter(
+            (e) => !deletedSet.has(e.id)
+          );
+          return { events: result };
+        }),
 
       getEventsForDate: (date) => {
         const dayStart = startOfDay(date);

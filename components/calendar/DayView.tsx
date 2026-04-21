@@ -2,6 +2,8 @@ import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-nati
 import { format, setHours, setMinutes, startOfDay, differenceInMinutes } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
+import { useHabitStore } from '@/stores/habitStore';
+import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import EventBlock from './EventBlock';
 import type { CalendarEvent } from '@/types';
 
@@ -16,7 +18,10 @@ interface DayViewProps {
 export default function DayView({ onTimeSlotPress, onEventPress }: DayViewProps) {
   const { theme } = useThemeStore();
   const { selectedDate, getEventsForDate } = useCalendarStore();
-  const events = getEventsForDate(selectedDate);
+  const { getActiveHabits } = useHabitStore();
+  const realEvents = getEventsForDate(selectedDate);
+  const habitEvents = generateHabitEventsForDate(getActiveHabits(), selectedDate);
+  const events = [...realEvents, ...habitEvents];
 
   const getEventPosition = (event: CalendarEvent) => {
     const start = new Date(event.startTime);
