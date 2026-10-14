@@ -42,7 +42,8 @@
     "plugins": [
       "expo-router",
       "expo-localization",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true
