@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View, Text, FlatList, TouchableOpacity } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { addDays, startOfDay } from 'date-fns';
@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import { autoScheduleTasks } from '@/lib/scheduler';
 import { collectTaskPattern } from '@/lib/patternLearning';
+import { findCarryOverCandidates } from '@/lib/taskCarryOver';
 import TaskItem from '@/components/tasks/TaskItem';
 import TaskFormModal from '@/components/tasks/TaskFormModal';
 import ScheduleConfirmModal from '@/components/scheduling/ScheduleConfirmModal';
@@ -22,13 +23,26 @@ const FILTER_LABELS = { all: 'All', todo: 'To Do', done: 'Done' };
 export default function TasksScreen() {
   const { theme } = useThemeStore();
   const { filter, setFilter, getFilteredTasks } = useTaskStore();
+  const allTasks = useTaskStore((s) => s.tasks);
+  const taskCarryOverEnabled = useSettingsStore((s) => s.taskCarryOverEnabled);
 
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
+  const [carryOverDismissed, setCarryOverDismissed] = useState(false);
 
   const tasks = getFilteredTasks();
+
+  const carryOverCandidates = useMemo(
+    () => (taskCarryOverEnabled ? findCarryOverCandidates(allTasks) : []),
+    [allTasks, taskCarryOverEnabled]
+  );
+  const showCarryOverBanner = carryOverCandidates.length > 0 && !carryOverDismissed;
+
+  const handleCarryOver = () => {
+    useTaskStore.getState().carryOverTasks();
+  };
 
   const handleTaskPress = (task: Task) => {
     setEditingTask(task);
@@ -149,6 +163,43 @@ export default function TasksScreen() {
         </View>
       </View>
 
+      {/* Carry-over banner */}
+      {showCarryOverBanner && (
+        <View
+          style={[
+            styles.carryOverBanner,
+            {
+              backgroundColor: theme.colors.primary + '14',
+              borderColor: theme.colors.primary + '33',
+              borderRadius: theme.borderRadius.md,
+            },
+          ]}
+        >
+          <FontAwesome name="history" size={16} color={theme.colors.primary} />
+          <View style={styles.carryOverTextWrap}>
+            <Text style={[styles.carryOverTitle, { color: theme.colors.text }]}>
+              {carryOverCandidates.length} unfinished{' '}
+              {carryOverCandidates.length === 1 ? 'task' : 'tasks'} from before today
+            </Text>
+            <Text style={[styles.carryOverSub, { color: theme.colors.textSecondary }]}>
+              Move them to today so they don't get lost?
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.carryOverAction, { backgroundColor: theme.colors.primary }]}
+            onPress={handleCarryOver}
+          >
+            <Text style={styles.carryOverActionText}>Move</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.carryOverDismiss}
+            onPress={() => setCarryOverDismissed(true)}
+          >
+            <FontAwesome name="times" size={16} color={theme.colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Filter tabs */}
       <View style={[styles.filterRow, { borderBottomColor: theme.colors.border }]}>
         {FILTERS.map((f) => (
@@ -258,6 +309,39 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '600',
     lineHeight: 24,
+  },
+  carryOverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderWidth: 1,
+  },
+  carryOverTextWrap: {
+    flex: 1,
+  },
+  carryOverTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  carryOverSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  carryOverAction: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  carryOverActionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  carryOverDismiss: {
+    padding: 4,
   },
   filterRow: {
     flexDirection: 'row',

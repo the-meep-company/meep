@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import SharedGroupPreferences from 'react-native-shared-group-preferences';
+import { ExtensionStorage } from '@bacons/apple-targets';
 import { addDays, startOfDay, endOfDay, startOfMonth, endOfMonth, format } from 'date-fns';
 import type { AIPersona, CalendarEvent, Task, WidgetCalendarView } from '@/types';
 import { useCalendarStore } from '@/stores/calendarStore';
@@ -12,6 +12,8 @@ export const WIDGET_APP_GROUP =
 export const WIDGET_STORAGE_KEY = 'meep_widget_payload';
 
 const FALLBACK_STORAGE_KEY = 'meep_widget_payload_fallback';
+
+const extensionStorage = Platform.OS === 'ios' ? new ExtensionStorage(WIDGET_APP_GROUP) : null;
 
 export type WidgetEvent = {
   id: string;
@@ -151,9 +153,11 @@ export function buildWidgetPayload(): WidgetPayload {
 export async function writeWidgetPayload(payload = buildWidgetPayload()): Promise<void> {
   const serialized = JSON.stringify(payload);
 
-  if (Platform.OS === 'ios') {
+  if (extensionStorage) {
     try {
-      await SharedGroupPreferences.setItem(WIDGET_STORAGE_KEY, payload, WIDGET_APP_GROUP);
+      // Stored as a JSON string; the widget decodes it in targets/widget/WidgetData.swift.
+      extensionStorage.set(WIDGET_STORAGE_KEY, serialized);
+      ExtensionStorage.reloadWidget();
       return;
     } catch (err) {
       console.warn('[widgetData] Shared group write failed, using AsyncStorage fallback.', err);
@@ -164,10 +168,10 @@ export async function writeWidgetPayload(payload = buildWidgetPayload()): Promis
 }
 
 export async function readWidgetPayload(): Promise<WidgetPayload | null> {
-  if (Platform.OS === 'ios') {
+  if (extensionStorage) {
     try {
-      const result = await SharedGroupPreferences.getItem(WIDGET_STORAGE_KEY, WIDGET_APP_GROUP);
-      if (result) return result as WidgetPayload;
+      const value = extensionStorage.get(WIDGET_STORAGE_KEY);
+      if (value) return JSON.parse(value) as WidgetPayload;
     } catch (err) {
       console.warn('[widgetData] Shared group read failed, using AsyncStorage fallback.', err);
     }
