@@ -102,8 +102,9 @@ so widgets built against the old payload still decode.
 - **Interactivity**: buttons/toggles in widgets require App Intents (iOS 17+).
   Deep links are simpler: `.widgetURL(URL(string: "meep://..."))` routes into
   expo-router.
-- **Device builds** need `ios.appleTeamId` in `app.json` for signing;
-  Simulator builds don't.
+- **Device builds** need a paid team ID (`APPLE_TEAM_ID` env var or
+  `ios.appleTeamId` in `app.json`); Simulator builds don't. See
+  "Installing on a real iPhone".
 
 ## AI prompt template — "vibe-code me a widget"
 
@@ -133,6 +134,34 @@ Read docs/WIDGETS.md first and follow its recipe exactly. Key constraints:
   (set LANG=en_US.UTF-8 if pod install crashes). Then confirm the widget
   builds and describe how I can add it from the home-screen widget gallery.
 ```
+
+## Installing on a real iPhone
+
+Device builds must be signed by a **paid** Apple Developer team: the widget
+reads its data through an App Group, and free "Personal Team" accounts can't use
+App Groups (the widget would only ever show its empty state).
+
+1. Find the team ID (10 characters) at developer.apple.com → Account →
+   Membership details.
+2. Plug in the iPhone, unlock it, and trust the Mac. Enable Developer Mode
+   (Settings → Privacy & Security → Developer Mode) if iOS asks.
+3. Run:
+
+   ```sh
+   APPLE_TEAM_ID=XXXXXXXXXX npm run ios:device
+   ```
+
+   This regenerates `ios/`, signs both the app and the `MeepWidgets` extension
+   with that team, builds Release (JS bundled in, no Metro needed), and installs
+   to the connected device. Pick the iPhone if prompted. If Xcode reports a
+   signing error, open `ios/meep.xcworkspace` once, select the team under
+   Signing & Capabilities for both targets, and let it register the bundle ID
+   and App Group.
+4. Open Meep once so it writes the widget payload, then long-press the home
+   screen → Edit → Add Widget → search "Meep".
+
+`APPLE_TEAM_ID` is read by `app.config.js`. Once the shared team is settled,
+set `ios.appleTeamId` in `app.json` and drop the env var.
 
 ## Quick verification commands
 
