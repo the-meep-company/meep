@@ -5,8 +5,9 @@ module.exports = (config) => ({
   displayName: 'Meep',
   deploymentTarget: '17.0',
   colors: {
-    $accent: '#2563EB',
-    $widgetBackground: { light: '#FAFAFA', dark: '#1C1C1E' },
+    // Sleek theme: brand purple accent, near-black dark background.
+    $accent: '#6C5CE7',
+    $widgetBackground: { light: '#FAFAFA', dark: '#0F0F14' },
   },
   entitlements: {
     'com.apple.security.application-groups':
