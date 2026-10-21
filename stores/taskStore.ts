@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Task, TaskStatus } from '@/types';
+import { findCarryOverCandidates, carryOverUpdates } from '@/lib/taskCarryOver';
 
 type TaskFilter = 'all' | 'todo' | 'done';
 
@@ -16,6 +17,7 @@ interface TaskState {
   deleteTask: (id: string) => void;
   toggleStatus: (id: string) => void;
   setTasks: (tasks: Task[]) => void;
+  carryOverTasks: (now?: Date) => number;
 
   // Selectors
   getFilteredTasks: () => Task[];
@@ -82,6 +84,27 @@ export const useTaskStore = create<TaskState>()(
       },
 
       setTasks: (tasks) => set({ tasks }),
+
+      carryOverTasks: (now = new Date()) => {
+        const candidates = findCarryOverCandidates(get().tasks, now);
+        if (candidates.length === 0) return 0;
+        const updatesById = new Map(
+          candidates.map((t) => [t.id, carryOverUpdates(t, now)])
+        );
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            updatesById.has(t.id)
+              ? { ...t, ...updatesById.get(t.id), updatedAt: new Date() }
+              : t
+          ),
+        }));
+        // Sync each carried task individually (mirrors updateTask's fire-and-forget).
+        for (const id of updatesById.keys()) {
+          const updated = get().tasks.find((t) => t.id === id);
+          if (updated) syncTask(updated);
+        }
+        return candidates.length;
+      },
 
       getFilteredTasks: () => {
         const { tasks, filter } = get();

@@ -14,6 +14,7 @@ interface SettingsState {
   ttsVoice: string | null;
   widgetCalendarView: WidgetCalendarView;
   widgetCategory: string | null;
+  taskCarryOverEnabled: boolean;
 
   setPersona: (persona: AIPersona) => void;
   setTimezone: (tz: string) => void;
@@ -25,6 +26,7 @@ interface SettingsState {
   setTtsVoice: (voice: string | null) => void;
   setWidgetCalendarView: (view: WidgetCalendarView) => void;
   setWidgetCategory: (category: string | null) => void;
+  setTaskCarryOverEnabled: (v: boolean) => void;
 }
 
 const defaultTimezone =
@@ -63,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
       ttsVoice: null,
       widgetCalendarView: 'daily',
       widgetCategory: null,
+      taskCarryOverEnabled: true,
 
       setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
       setTimezone: (tz) => { set({ timezone: tz }); syncSettings(); },
@@ -74,6 +77,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTtsVoice: (voice) => set({ ttsVoice: voice }),
       setWidgetCalendarView: (view) => set({ widgetCalendarView: view }),
       setWidgetCategory: (category) => set({ widgetCategory: category }),
+      setTaskCarryOverEnabled: (v) => set({ taskCarryOverEnabled: v }),
     }),
     {
       name: 'meep-settings',
@@ -89,6 +93,7 @@ export const useSettingsStore = create<SettingsState>()(
         ttsVoice: state.ttsVoice,
         widgetCalendarView: state.widgetCalendarView,
         widgetCategory: state.widgetCategory,
+        taskCarryOverEnabled: state.taskCarryOverEnabled,
       }),
     }
   )
