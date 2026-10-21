@@ -34,9 +34,9 @@ export default function SettingsScreen() {
   const { theme, themeName, setTheme } = useThemeStore();
   const {
     aiPersona, timezone, timezoneAutoDetect, companionName, voiceLocale,
-    ttsEnabled, ttsAutoRead, ttsVoice,
+    ttsEnabled, ttsAutoRead, ttsVoice, taskCarryOverEnabled,
     setPersona, setTimezoneAutoDetect, setCompanionName, setVoiceLocale,
-    setTtsEnabled, setTtsAutoRead, setTtsVoice,
+    setTtsEnabled, setTtsAutoRead, setTtsVoice, setTaskCarryOverEnabled,
   } = useSettingsStore();
   const { user, isGuest, signOut } = useAuthStore();
   const { googleCalendars, syncState } = useSyncStore();
@@ -380,6 +380,34 @@ export default function SettingsScreen() {
           <Text style={[styles.optionName, { color: theme.colors.primary }]}>Test voice</Text>
         </TouchableOpacity>
       )}
+
+      {/* Tasks Section */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+        Tasks
+      </Text>
+
+      <View
+        style={[
+          styles.optionCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.borderRadius.md,
+          },
+        ]}
+      >
+        <View style={styles.optionInfo}>
+          <Text style={[styles.optionName, { color: theme.colors.text }]}>Carry over unfinished tasks</Text>
+          <Text style={[styles.optionDesc, { color: theme.colors.textSecondary }]}>
+            Offer to move past-due, incomplete tasks to today
+          </Text>
+        </View>
+        <Switch
+          value={taskCarryOverEnabled}
+          onValueChange={setTaskCarryOverEnabled}
+          trackColor={{ true: theme.colors.primary }}
+        />
+      </View>
 
       {/* Widget Section */}
       <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>

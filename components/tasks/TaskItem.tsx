@@ -91,6 +91,13 @@ export default function TaskItem({ task, onPress }: TaskItemProps) {
               </Text>
             </View>
           )}
+          {task.carryOverFrom && !isDone && (
+            <View style={[styles.carryBadge, { backgroundColor: theme.colors.textTertiary + '20' }]}>
+              <Text style={[styles.carryBadgeText, { color: theme.colors.textSecondary }]}>
+                Carried over
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -164,6 +171,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   aiBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  carryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  carryBadgeText: {
     fontSize: 11,
     fontWeight: '600',
   },
