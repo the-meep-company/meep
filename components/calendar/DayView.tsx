@@ -5,6 +5,8 @@ import { useCalendarStore } from '@/stores/calendarStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import EventBlock from './EventBlock';
+import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
+import { decorative } from '@/lib/accessibility';
 import type { CalendarEvent } from '@/types';
 
 const HOUR_HEIGHT = 60;
@@ -17,6 +19,7 @@ interface DayViewProps {
 
 export default function DayView({ onTimeSlotPress, onEventPress }: DayViewProps) {
   const { theme } = useThemeStore();
+  const tabClearance = useTabBarClearance();
   const { selectedDate, getEventsForDate } = useCalendarStore();
   const { getActiveHabits } = useHabitStore();
   const realEvents = getEventsForDate(selectedDate);
@@ -43,28 +46,34 @@ export default function DayView({ onTimeSlotPress, onEventPress }: DayViewProps)
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      contentContainerStyle={{ paddingBottom: 40 }}
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: tabClearance }}
       showsVerticalScrollIndicator={false}
       contentOffset={{ x: 0, y: 7 * HOUR_HEIGHT }} // scroll to 7am
     >
       <View style={styles.timeGrid}>
         {/* Time labels + grid lines */}
-        {HOURS.map((hour) => (
+        {HOURS.map((hour) => {
+          const hourName =
+            hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+          return (
           <TouchableOpacity
             key={hour}
             onPress={() => handleTimeSlotPress(hour)}
             activeOpacity={0.6}
             style={[styles.hourRow, { height: HOUR_HEIGHT }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Add event at ${hourName}`}
           >
-            <Text style={[styles.hourLabel, { color: theme.colors.textTertiary }]}>
-              {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+            <Text style={[styles.hourLabel, { color: theme.colors.textSecondary }]}>
+              {hourName}
             </Text>
             <View
               style={[styles.hourLine, { borderBottomColor: theme.colors.borderLight }]}
             />
           </TouchableOpacity>
-        ))}
+          );
+        })}
 
         {/* Events overlay */}
         <View style={styles.eventsOverlay}>
@@ -110,7 +119,7 @@ function CurrentTimeIndicator({
   const top = (minutes / 60) * HOUR_HEIGHT;
 
   return (
-    <View style={[styles.nowIndicator, { top }]}>
+    <View style={[styles.nowIndicator, { top }]} pointerEvents="none" {...decorative}>
       <View style={[styles.nowDot, { backgroundColor: theme.colors.error }]} />
       <View style={[styles.nowLine, { backgroundColor: theme.colors.error }]} />
     </View>

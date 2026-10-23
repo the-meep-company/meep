@@ -1,4 +1,5 @@
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
   Platform,
@@ -18,6 +19,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { fetchGoogleCalendars, performSync } from '@/lib/googleCalendar';
+import { decorative, hitSlopFor, a11yState } from '@/lib/accessibility';
 
 export default function GoogleCalendarScreen() {
   const router = useRouter();
@@ -55,6 +57,22 @@ export default function GoogleCalendarScreen() {
         .catch((e) => setSyncError(String(e)));
     }
   }, [googleToken]);
+
+  // Announce async sync/connection results to VoiceOver (Android/web use the
+  // live regions below). Only fires on transitions, not on first render.
+  const prevA11yRef = useRef({ isSyncing, isConnected, syncError });
+  useEffect(() => {
+    const prev = prevA11yRef.current;
+    prevA11yRef.current = { isSyncing, isConnected, syncError };
+    if (Platform.OS !== 'ios') return;
+    if (syncError && syncError !== prev.syncError) {
+      AccessibilityInfo.announceForAccessibility(`Sync error: ${syncError}`);
+    } else if (prev.isSyncing && !isSyncing && !syncError) {
+      AccessibilityInfo.announceForAccessibility('Google Calendar sync complete');
+    } else if (!prev.isConnected && isConnected) {
+      AccessibilityInfo.announceForAccessibility('Google Calendar connected');
+    }
+  }, [isSyncing, isConnected, syncError]);
 
   const handleConnect = async () => {
     try {
@@ -142,10 +160,16 @@ export default function GoogleCalendarScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={hitSlopFor(32)}
+        >
           <FontAwesome name="chevron-left" size={16} color={theme.colors.primary} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.colors.text }]}>
+        <Text accessibilityRole="header" style={[styles.title, { color: theme.colors.text }]}>
           Google Calendar
         </Text>
       </View>
@@ -163,12 +187,13 @@ export default function GoogleCalendarScreen() {
       >
         <View style={styles.cardRow}>
           <View
+            {...decorative}
             style={[
               styles.googleDot,
               { backgroundColor: isConnected ? theme.colors.success : theme.colors.border },
             ]}
           />
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }} accessibilityLiveRegion="polite">
             <Text style={[styles.cardTitle, { color: theme.colors.text }]}>
               {isConnected ? 'Connected' : 'Not connected'}
             </Text>
@@ -180,6 +205,9 @@ export default function GoogleCalendarScreen() {
           {isConnected ? (
             <TouchableOpacity
               onPress={handleDisconnect}
+              accessibilityRole="button"
+              accessibilityLabel="Disconnect Google Calendar"
+              hitSlop={hitSlopFor(31)}
               style={[
                 styles.actionButton,
                 { borderColor: theme.colors.error, borderRadius: theme.borderRadius.sm },
@@ -192,6 +220,9 @@ export default function GoogleCalendarScreen() {
           ) : (
             <TouchableOpacity
               onPress={handleConnect}
+              accessibilityRole="button"
+              accessibilityLabel="Connect Google Calendar"
+              hitSlop={hitSlopFor(31)}
               style={[
                 styles.actionButton,
                 { borderColor: theme.colors.primary, borderRadius: theme.borderRadius.sm },
@@ -207,7 +238,11 @@ export default function GoogleCalendarScreen() {
 
         {/* Sync error */}
         {syncError ? (
-          <Text style={[styles.errorText, { color: theme.colors.error }]}>
+          <Text
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            style={[styles.errorText, { color: theme.colors.error }]}
+          >
             {syncError}
           </Text>
         ) : null}
@@ -218,6 +253,9 @@ export default function GoogleCalendarScreen() {
         <TouchableOpacity
           onPress={handleSyncNow}
           disabled={isSyncing}
+          accessibilityRole="button"
+          accessibilityLabel={isSyncing ? 'Syncing' : 'Sync now'}
+          {...a11yState({ disabled: isSyncing, busy: isSyncing })}
           style={[
             styles.syncButton,
             {
@@ -230,12 +268,12 @@ export default function GoogleCalendarScreen() {
           {isSyncing ? (
             <ActivityIndicator size="small" color={theme.colors.primary} />
           ) : (
-            <FontAwesome name="refresh" size={14} color="#fff" />
+            <FontAwesome name="refresh" size={14} color={theme.colors.onPrimary} />
           )}
           <Text
             style={[
               styles.syncButtonText,
-              { color: isSyncing ? theme.colors.textSecondary : '#fff', marginLeft: 8 },
+              { color: isSyncing ? theme.colors.textSecondary : theme.colors.onPrimary, marginLeft: 8 },
             ]}
           >
             {isSyncing ? 'Syncing…' : 'Sync Now'}
@@ -246,7 +284,10 @@ export default function GoogleCalendarScreen() {
       {/* Calendar list */}
       {isConnected && googleCalendars.length > 0 && (
         <>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+          <Text
+            accessibilityRole="header"
+            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
+          >
             Calendars to Sync
           </Text>
 
@@ -265,6 +306,7 @@ export default function GoogleCalendarScreen() {
               <View style={styles.cardRow}>
                 {/* Calendar colour swatch */}
                 <View
+                  {...decorative}
                   style={[
                     styles.calendarSwatch,
                     { backgroundColor: cal.backgroundColor, borderRadius: theme.borderRadius.sm },
@@ -284,7 +326,10 @@ export default function GoogleCalendarScreen() {
                 <Switch
                   value={selectedCalendarIds.includes(cal.id)}
                   onValueChange={() => toggleCalendarSync(cal.id)}
+                  accessibilityLabel={`Sync ${cal.summary}`}
                   trackColor={{ true: theme.colors.primary }}
+                  // The "on" track is the near-white primary; keep the thumb visible on it.
+                  thumbColor={selectedCalendarIds.includes(cal.id) ? theme.colors.onPrimary : undefined}
                 />
               </View>
             </View>
@@ -294,7 +339,7 @@ export default function GoogleCalendarScreen() {
 
       {/* Info note at the bottom */}
       <View style={styles.infoBox}>
-        <FontAwesome name="info-circle" size={13} color={theme.colors.textTertiary} />
+        <FontAwesome name="info-circle" size={13} color={theme.colors.textTertiary} {...decorative} />
         <Text style={[styles.infoText, { color: theme.colors.textTertiary }]}>
           Google Calendar events are read-only in Meep v1. To edit them, open Google Calendar directly.
         </Text>

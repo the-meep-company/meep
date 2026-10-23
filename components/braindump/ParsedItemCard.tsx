@@ -2,13 +2,15 @@ import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { format } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
+import { hitSlopFor } from '@/lib/accessibility';
 import type { ParsedItem } from '@/types';
+import { TINT, ON_TINT } from '@/lib/semanticColors';
 
 const TYPE_CONFIG = {
-  event: { label: 'Event', color: '#2563EB', icon: 'calendar' as const },
-  task: { label: 'Task', color: '#10B981', icon: 'check' as const },
-  goal: { label: 'Goal', color: '#8B5CF6', icon: 'flag' as const },
-  habit: { label: 'Habit', color: '#F59E0B', icon: 'refresh' as const },
+  event: { label: 'Event', color: TINT.blue, icon: 'calendar' as const },
+  task: { label: 'Task', color: TINT.green, icon: 'check' as const },
+  goal: { label: 'Goal', color: TINT.purple, icon: 'flag' as const },
+  habit: { label: 'Habit', color: TINT.amber, icon: 'refresh' as const },
 };
 
 interface ParsedItemCardProps {
@@ -72,6 +74,17 @@ export default function ParsedItemCard({ item, onEdit, onDelete, onConfirm }: Pa
   };
 
   const isConfirmed = item.status === 'confirmed';
+  const title = getTitle();
+  const details = getDetails();
+  const lowConfidence = item.confidence < 0.8;
+  const summaryLabel = [
+    `${config.label}: ${title}`,
+    details,
+    lowConfidence ? `${Math.round(item.confidence * 100)}% confidence` : '',
+  ].filter(Boolean).join('. ');
+
+  // Edit/delete icons are 26pt; expand to 44pt tall without overlapping each other across the 12pt gap
+  const iconHitSlop = hitSlopFor(26);
 
   return (
     <View
@@ -85,53 +98,77 @@ export default function ParsedItemCard({ item, onEdit, onDelete, onConfirm }: Pa
         },
       ]}
     >
-      <View style={styles.header}>
-        {/* Type badge */}
-        <View style={[styles.badge, { backgroundColor: config.color + '22' }]}>
-          <FontAwesome name={config.icon} size={10} color={config.color} />
-          <Text style={[styles.badgeText, { color: config.color }]}>{config.label}</Text>
+      {/* Badge, title, details and confidence read as one element; buttons stay separately focusable */}
+      <View accessible accessibilityLabel={summaryLabel}>
+        <View style={styles.header}>
+          {/* Type badge */}
+          <View style={[styles.badge, { backgroundColor: config.color + '22' }]}>
+            <FontAwesome name={config.icon} size={10} color={config.color} />
+            <Text style={[styles.badgeText, { color: config.color }]}>{config.label}</Text>
+          </View>
+
+          {/* Confidence */}
+          {lowConfidence && (
+            <Text style={[styles.confidence, { color: theme.colors.textTertiary }]}>
+              {Math.round(item.confidence * 100)}%
+            </Text>
+          )}
         </View>
 
-        {/* Confidence */}
-        {item.confidence < 0.8 && (
-          <Text style={[styles.confidence, { color: theme.colors.textTertiary }]}>
-            {Math.round(item.confidence * 100)}%
-          </Text>
-        )}
-      </View>
-
-      {/* Title */}
-      <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2}>
-        {getTitle()}
-      </Text>
-
-      {/* Details */}
-      {getDetails() ? (
-        <Text style={[styles.details, { color: theme.colors.textSecondary }]}>
-          {getDetails()}
+        {/* Title */}
+        <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2}>
+          {title}
         </Text>
-      ) : null}
+
+        {/* Details */}
+        {details ? (
+          <Text style={[styles.details, { color: theme.colors.textSecondary }]}>
+            {details}
+          </Text>
+        ) : null}
+      </View>
 
       {/* Actions */}
       {!isConfirmed && (
         <View style={styles.actions}>
-          <TouchableOpacity onPress={() => onEdit(item)} style={styles.actionButton}>
+          <TouchableOpacity
+            onPress={() => onEdit(item)}
+            style={styles.actionButton}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${title}`}
+            hitSlop={{ ...iconHitSlop, right: 6 }}
+          >
             <FontAwesome name="pencil" size={14} color={theme.colors.textSecondary} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onDelete(item.id)} style={styles.actionButton}>
+          <TouchableOpacity
+            onPress={() => onDelete(item.id)}
+            style={styles.actionButton}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${title}`}
+            hitSlop={{ ...iconHitSlop, left: 6 }}
+          >
             <FontAwesome name="trash-o" size={14} color={theme.colors.error} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onConfirm(item.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Confirm ${title}`}
+            accessibilityHint={`Saves this ${config.label.toLowerCase()}`}
+            hitSlop={hitSlopFor(24)}
             style={[styles.confirmButton, { backgroundColor: config.color }]}
           >
-            <FontAwesome name="check" size={12} color="#FFF" />
+            <FontAwesome name="check" size={12} color={ON_TINT} />
           </TouchableOpacity>
         </View>
       )}
 
       {isConfirmed && (
-        <View style={styles.confirmedBadge}>
+        <View
+          style={styles.confirmedBadge}
+          accessible
+          accessibilityLabel={`${title}: saved`}
+          accessibilityLiveRegion="polite"
+        >
           <FontAwesome name="check-circle" size={14} color={theme.colors.success || '#10B981'} />
           <Text style={[styles.confirmedText, { color: theme.colors.success || '#10B981' }]}>
             Saved

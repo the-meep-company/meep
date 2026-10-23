@@ -1,14 +1,16 @@
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { decorative, hitSlopFor } from '@/lib/accessibility';
 import type { ChatAction } from '@/types';
+import { TINT, ON_TINT } from '@/lib/semanticColors';
 
 const ACTION_CONFIG: Record<string, { label: string; color: string; icon: 'calendar' | 'check' | 'trash-o' | 'arrows' | 'plus' }> = {
-  create_event: { label: 'Create Event', color: '#2563EB', icon: 'plus' },
-  move_event: { label: 'Move Event', color: '#2563EB', icon: 'arrows' },
-  delete_event: { label: 'Delete Event', color: '#EF4444', icon: 'trash-o' },
-  create_task: { label: 'Create Task', color: '#10B981', icon: 'plus' },
-  complete_task: { label: 'Complete Task', color: '#10B981', icon: 'check' },
+  create_event: { label: 'Create Event', color: TINT.blue, icon: 'plus' },
+  move_event: { label: 'Move Event', color: TINT.blue, icon: 'arrows' },
+  delete_event: { label: 'Delete Event', color: TINT.red, icon: 'trash-o' },
+  create_task: { label: 'Create Task', color: TINT.green, icon: 'plus' },
+  complete_task: { label: 'Complete Task', color: TINT.green, icon: 'check' },
 };
 
 interface ActionConfirmCardProps {
@@ -34,21 +36,27 @@ export default function ActionConfirmCard({ action, onAccept, onReject, status }
         },
       ]}
     >
-      <View style={styles.header}>
-        <View style={[styles.badge, { backgroundColor: config.color + '22' }]}>
-          <FontAwesome name={config.icon} size={10} color={config.color} />
-          <Text style={[styles.badgeText, { color: config.color }]}>{config.label}</Text>
+      {/* Badge + label read as one element; buttons stay separately focusable */}
+      <View accessible accessibilityLabel={`Suggested action: ${config.label}. ${action.label}`}>
+        <View style={styles.header}>
+          <View style={[styles.badge, { backgroundColor: config.color + '22' }]}>
+            <FontAwesome name={config.icon} size={10} color={config.color} {...decorative} />
+            <Text style={[styles.badgeText, { color: config.color }]}>{config.label}</Text>
+          </View>
         </View>
-      </View>
 
-      <Text style={[styles.label, { color: theme.colors.text }]} numberOfLines={2}>
-        {action.label}
-      </Text>
+        <Text style={[styles.label, { color: theme.colors.text }]} numberOfLines={2}>
+          {action.label}
+        </Text>
+      </View>
 
       {!status && (
         <View style={styles.actions}>
           <TouchableOpacity
             onPress={() => onReject(action)}
+            accessibilityRole="button"
+            accessibilityLabel={`Reject: ${action.label}`}
+            hitSlop={hitSlopFor(30)}
             style={[styles.rejectButton, { borderColor: theme.colors.border }]}
           >
             <FontAwesome name="times" size={12} color={theme.colors.textSecondary} />
@@ -56,16 +64,24 @@ export default function ActionConfirmCard({ action, onAccept, onReject, status }
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onAccept(action)}
+            accessibilityRole="button"
+            accessibilityLabel={`Accept: ${config.label}, ${action.label}`}
+            hitSlop={hitSlopFor(30)}
             style={[styles.acceptButton, { backgroundColor: config.color }]}
           >
-            <FontAwesome name="check" size={12} color="#FFF" />
-            <Text style={[styles.buttonText, { color: '#FFF' }]}>Accept</Text>
+            <FontAwesome name="check" size={12} color={ON_TINT} />
+            <Text style={[styles.buttonText, { color: ON_TINT }]}>Accept</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {status && (
-        <View style={styles.statusBadge}>
+        <View
+          style={styles.statusBadge}
+          accessible
+          accessibilityLabel={`${action.label}: ${status === 'accepted' ? 'Accepted' : 'Rejected'}`}
+          accessibilityLiveRegion="polite"
+        >
           <FontAwesome
             name={status === 'accepted' ? 'check-circle' : 'times-circle'}
             size={14}

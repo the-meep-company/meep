@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { Pressable, StyleSheet, View, Text, ScrollView } from 'react-native';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   addDays, format, isSameMonth, isSameDay, isToday,
@@ -7,8 +7,12 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
+import { decorative } from '@/lib/accessibility';
+import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
+import Card from '@/components/ui/Card';
 
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAY_CIRCLE = 36;
 
 interface MonthViewProps {
   onDayPress?: (date: Date) => void;
@@ -16,6 +20,7 @@ interface MonthViewProps {
 
 export default function MonthView({ onDayPress }: MonthViewProps) {
   const { theme } = useThemeStore();
+  const tabClearance = useTabBarClearance();
   const { selectedDate, setSelectedDate, setView, getEventsForDate } = useCalendarStore();
   const { getActiveHabits } = useHabitStore();
   const activeHabits = getActiveHabits();
@@ -47,132 +52,136 @@ export default function MonthView({ onDayPress }: MonthViewProps) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Day name headers */}
-      <View style={styles.headerRow}>
-        {DAY_NAMES.map((name) => (
-          <View key={name} style={styles.headerCell}>
-            <Text style={[styles.headerText, { color: theme.colors.textTertiary }]}>
-              {name}
-            </Text>
-          </View>
-        ))}
-      </View>
+    <ScrollView
+      contentContainerStyle={{
+        paddingHorizontal: theme.spacing.screen,
+        paddingBottom: tabClearance,
+      }}
+      showsVerticalScrollIndicator={false}
+    >
+      <Card style={styles.card}>
+        {/* Weekday initials — visual only; each day's label carries its weekday */}
+        <View style={styles.weekRow} {...decorative}>
+          {DAY_INITIALS.map((name, i) => (
+            <View key={i} style={styles.headerCell}>
+              <Text style={[styles.headerText, { color: theme.colors.textSecondary }]}>{name}</Text>
+            </View>
+          ))}
+        </View>
 
-      {/* Calendar grid */}
-      {rows.map((week, rowIdx) => (
-        <View key={rowIdx} style={styles.weekRow}>
-          {week.map((d) => {
-            const inMonth = isSameMonth(d, selectedDate);
-            const today = isToday(d);
-            const selected = isSameDay(d, selectedDate);
-            const realEvents = getEventsForDate(d);
-            const habitEvents = generateHabitEventsForDate(activeHabits, d);
-            const events = [...realEvents, ...habitEvents];
+        {rows.map((week, rowIdx) => (
+          <View key={rowIdx} style={styles.weekRow}>
+            {week.map((d) => {
+              const inMonth = isSameMonth(d, selectedDate);
+              const today = isToday(d);
+              const selected = isSameDay(d, selectedDate);
+              const events = [
+                ...getEventsForDate(d),
+                ...generateHabitEventsForDate(activeHabits, d),
+              ];
+              const label = [
+                format(d, 'EEEE d MMMM'),
+                today ? 'today' : null,
+                selected ? 'selected' : null,
+                events.length > 0
+                  ? `${events.length} ${events.length === 1 ? 'event' : 'events'}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(', ');
 
-            return (
-              <TouchableOpacity
-                key={d.toISOString()}
-                style={[
-                  styles.dayCell,
-                  {
-                    backgroundColor: selected
-                      ? theme.colors.primaryLight
-                      : 'transparent',
-                    borderRadius: theme.borderRadius.sm,
-                  },
-                ]}
-                onPress={() => handleDayPress(d)}
-                activeOpacity={0.6}
-              >
-                <View
-                  style={[
-                    styles.dayNumberWrapper,
-                    today && {
-                      backgroundColor: theme.colors.primary,
-                      borderRadius: 14,
-                    },
-                  ]}
+              return (
+                <Pressable
+                  key={d.toISOString()}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  accessibilityHint="Opens this day"
+                  onPress={() => handleDayPress(d)}
+                  style={({ pressed }) => [styles.dayCell, pressed && { opacity: 0.6 }]}
                 >
-                  <Text
+                  <View
                     style={[
-                      styles.dayNumber,
-                      {
-                        color: today
-                          ? '#FFFFFF'
-                          : inMonth
-                          ? theme.colors.text
-                          : theme.colors.textTertiary,
-                        fontWeight: today || selected ? '700' : '400',
-                      },
+                      styles.dayCircle,
+                      today && { backgroundColor: theme.colors.primary },
+                      selected &&
+                        !today && {
+                          backgroundColor: theme.colors.primaryLight,
+                          borderWidth: 1.5,
+                          borderColor: theme.colors.primary,
+                        },
                     ]}
                   >
-                    {format(d, 'd')}
-                  </Text>
-                </View>
+                    <Text
+                      style={[
+                        styles.dayNumber,
+                        {
+                          color: today
+                            ? theme.colors.onPrimary
+                            : inMonth
+                            ? theme.colors.text
+                            : theme.colors.textTertiary,
+                          fontWeight: today || selected ? '600' : '400',
+                        },
+                      ]}
+                    >
+                      {format(d, 'd')}
+                    </Text>
+                  </View>
 
-                {/* Event dots */}
-                {events.length > 0 && (
-                  <View style={styles.dotRow}>
+                  {/* Event dots */}
+                  <View style={styles.dotRow} {...decorative}>
                     {events.slice(0, 3).map((e, i) => (
-                      <View
-                        key={i}
-                        style={[styles.dot, { backgroundColor: e.color }]}
-                      />
+                      <View key={i} style={[styles.dot, { backgroundColor: e.color }]} />
                     ))}
                   </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ))}
-    </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </Card>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 8,
+  card: {
+    paddingHorizontal: 10,
+    paddingVertical: 14,
   },
-  headerRow: {
+  weekRow: {
     flexDirection: 'row',
-    marginBottom: 8,
   },
   headerCell: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingBottom: 8,
   },
   headerText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  weekRow: {
-    flexDirection: 'row',
-    marginBottom: 2,
   },
   dayCell: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 6,
-    minHeight: 52,
+    minHeight: 50,
+    paddingTop: 2,
   },
-  dayNumberWrapper: {
-    width: 28,
-    height: 28,
+  dayCircle: {
+    width: DAY_CIRCLE,
+    height: DAY_CIRCLE,
+    borderRadius: DAY_CIRCLE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayNumber: {
-    fontSize: 14,
+    fontSize: 15,
   },
   dotRow: {
     flexDirection: 'row',
-    marginTop: 4,
     gap: 3,
+    height: 7,
+    marginTop: 3,
   },
   dot: {
     width: 5,

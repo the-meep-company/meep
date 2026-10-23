@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View, TextInput, TouchableOpacity } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { hitSlopFor, a11yState } from '@/lib/accessibility';
 
 interface ChatInputProps {
   onSend: (text: string) => void;
@@ -42,10 +43,16 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
         onSubmitEditing={handleSend}
         returnKeyType="send"
         editable={!disabled}
+        accessibilityLabel="Message"
+        {...a11yState({ disabled: !!disabled })}
       />
       <TouchableOpacity
         onPress={handleSend}
         disabled={!text.trim() || disabled}
+        accessibilityRole="button"
+        accessibilityLabel="Send message"
+        {...a11yState({ disabled: !text.trim() || !!disabled })}
+        hitSlop={hitSlopFor(40)}
         style={[
           styles.sendButton,
           {
@@ -57,7 +64,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
         <FontAwesome
           name="send"
           size={16}
-          color={text.trim() ? '#FFF' : theme.colors.textTertiary}
+          color={text.trim() ? theme.colors.onPrimary : theme.colors.textTertiary}
         />
       </TouchableOpacity>
     </View>

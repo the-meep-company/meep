@@ -2,6 +2,7 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { format } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { decorative } from '@/lib/accessibility';
 import type { CalendarEvent } from '@/types';
 
 interface EventBlockProps {
@@ -27,17 +28,30 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
     onPress?.(event);
   };
 
+  const label = [
+    event.title,
+    `${format(startTime, 'h:mm a')} to ${format(endTime, 'h:mm a')}`,
+    isHabit ? 'recurring habit' : null,
+    isAiPlaced && !isGoogle ? 'scheduled by AI' : null,
+    isGoogle ? 'from Google Calendar, read only' : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
     <TouchableOpacity
       onPress={handlePress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={isGoogle ? undefined : 'Opens event details'}
       style={[
         styles.container,
         {
           backgroundColor: event.color + (isHabit ? '18' : '22'),
           borderLeftColor: event.color,
           borderRadius: theme.borderRadius.sm,
-          opacity: isHabit ? 0.85 : 1,
+          opacity: isHabit ? 0.9 : 1,
         },
         isHabit && styles.habitBorder,
         isAiPlaced && !isHabit && { borderStyle: 'dashed' as const, borderLeftColor: theme.colors.primary },
@@ -46,7 +60,7 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
     >
       <View style={styles.titleRow}>
         {isHabit && (
-          <FontAwesome name="refresh" size={10} color={event.color} style={styles.habitIcon} />
+          <FontAwesome name="refresh" size={10} color={event.color} style={styles.habitIcon} {...decorative} />
         )}
         <Text
           style={[styles.title, { color: theme.colors.text, flex: 1 }]}
@@ -55,10 +69,10 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
           {event.title}
         </Text>
         {isAiPlaced && !isGoogle && (
-          <FontAwesome name="magic" size={10} color={theme.colors.primary} style={styles.aiIcon} />
+          <FontAwesome name="magic" size={10} color={theme.colors.text} style={styles.aiIcon} {...decorative} />
         )}
         {isGoogle && (
-          <FontAwesome name="google" size={10} color={event.color} style={styles.googleIcon} />
+          <FontAwesome name="google" size={10} color={event.color} style={styles.googleIcon} {...decorative} />
         )}
       </View>
       {!compact && (

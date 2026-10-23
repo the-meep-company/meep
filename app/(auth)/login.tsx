@@ -1,26 +1,66 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  StyleSheet, View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  StyleSheet, View, Text, TextInput, Pressable, ScrollView, Linking,
+  KeyboardAvoidingView, Platform, ActivityIndicator, AccessibilityInfo, type TextInputProps,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useThemeStore } from '@/stores/themeStore';
 import { useAuthStore } from '@/stores/authStore';
+import { hitSlopFor, a11yState, decorative } from '@/lib/accessibility';
+import { MeshBackground, GrainOverlay } from '@/components/common/GlassBackground';
+import { getBackgroundPreset } from '@/lib/backgrounds';
 
 const ENABLE_APPLE_SIGN_IN = process.env.EXPO_PUBLIC_ENABLE_APPLE_SIGN_IN === 'true';
 
-export default function LoginScreen() {
-  const { theme } = useThemeStore();
-  const { signInWithGoogle, signInWithApple, signInWithEmail, signUp, continueAsGuest } = useAuthStore();
+// The reference's warm-to-teal gradient, shared with the Ember wallpaper.
+const EMBER = getBackgroundPreset('ember');
 
+// The sheet is always dark (it sits on the fixed Ember gradient), so its text
+// colors are fixed rather than theme tokens. All pass AA on SHEET.
+const SHEET = '#131313';
+const TEXT = '#F5F5F5';
+const MUTED = 'rgba(245,245,245,0.66)';
+const LINE = 'rgba(255,255,255,0.40)'; // 3:1+ field boundary (WCAG 1.4.11)
+const HIGHLIGHT = '#FFB38A';
+const ERROR = '#FF9C8A';
+
+type Mode = 'signin' | 'signup';
+type Sent = { kind: 'signup' | 'reset'; email: string };
+
+export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
+  const {
+    signInWithGoogle, signInWithApple, signInWithEmail, signUp, continueAsGuest,
+    resendSignUpEmail, resetPassword,
+  } = useAuthStore();
+
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<Sent | null>(null);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const isSignUp = mode === 'signup';
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    document.title = sent ? 'Check your email – Meep' : isSignUp ? 'Create account – Meep' : 'Sign in – Meep';
+  }, [isSignUp, sent]);
+
+  const showSent = (next: Sent) => {
+    setSent(next);
+    setResendStatus(null);
+    AccessibilityInfo.announceForAccessibility(`Check your email. We've sent a link to ${next.email}`);
+  };
 
   const handleEmailAuth = async () => {
+    setError(null);
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Please enter both email and password.');
+      setError('Enter your email and password.');
       return;
     }
     setLoading(true);
@@ -28,231 +68,507 @@ export default function LoginScreen() {
       ? await signUp(email.trim(), password)
       : await signInWithEmail(email.trim(), password);
     setLoading(false);
-    if (result.error) {
-      Alert.alert('Error', result.error);
-    } else if (isSignUp) {
-      Alert.alert('Check your email', 'We sent you a confirmation link. Please verify your email to sign in.');
-    }
+    if (result.error) setError(result.error);
+    else if (isSignUp) showSent({ kind: 'signup', email: email.trim() });
   };
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    try {
-      await signInWithGoogle();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Google sign-in failed');
+  const handleForgot = async () => {
+    setError(null);
+    if (!email.trim()) {
+      setError('Enter your email first, then tap Forgot.');
+      return;
     }
+    setLoading(true);
+    const result = await resetPassword(email.trim());
     setLoading(false);
+    if (result.error) setError(result.error);
+    else showSent({ kind: 'reset', email: email.trim() });
   };
 
-  const handleAppleSignIn = async () => {
+  const handleResend = async () => {
+    if (!sent) return;
+    setLoading(true);
+    const result = sent.kind === 'signup'
+      ? await resendSignUpEmail(sent.email)
+      : await resetPassword(sent.email);
+    setLoading(false);
+    setResendStatus(result.error ?? 'Sent again. It can take a minute to arrive.');
+  };
+
+  const handleProvider = async (signIn: () => Promise<void>, name: string) => {
+    setError(null);
     setLoading(true);
     try {
-      await signInWithApple();
+      await signIn();
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Apple sign-in failed');
+      setError(err?.message || `${name} sign-in failed`);
     }
     setLoading(false);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.inner}>
-        {/* Logo / Title */}
-        <View style={styles.header}>
-          <Text style={[styles.logo, { color: theme.colors.primary }]}>Meep</Text>
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-            Your AI calendar companion
-          </Text>
-        </View>
+    <View style={styles.root}>
+      <MeshBackground preset={EMBER} />
+      <GrainOverlay level="subtle" />
 
-        {/* Google Sign-In */}
-        <TouchableOpacity
-          style={[styles.googleButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.borderRadius.md }]}
-          onPress={handleGoogleSignIn}
-          disabled={loading}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          role="main"
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.googleButtonText, { color: theme.colors.text }]}>
-            Continue with Google
-          </Text>
-        </TouchableOpacity>
-
-        {Platform.OS === 'ios' && ENABLE_APPLE_SIGN_IN ? (
-          <View style={styles.appleButtonWrap}>
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-              cornerRadius={12}
-              style={styles.appleButton}
-              onPress={handleAppleSignIn}
-            />
-          </View>
-        ) : null}
-
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-          <Text style={[styles.dividerText, { color: theme.colors.textSecondary }]}>or</Text>
-          <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-        </View>
-
-        {/* Email/Password Form */}
-        <TextInput
-          style={[styles.input, {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            color: theme.colors.text,
-            borderRadius: theme.borderRadius.md,
-          }]}
-          placeholder="Email"
-          placeholderTextColor={theme.colors.textTertiary}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          textContentType="emailAddress"
-        />
-        <TextInput
-          style={[styles.input, {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            color: theme.colors.text,
-            borderRadius: theme.borderRadius.md,
-          }]}
-          placeholder="Password"
-          placeholderTextColor={theme.colors.textTertiary}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          textContentType="password"
-        />
-
-        <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md }]}
-          onPress={handleEmailAuth}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              {isSignUp ? 'Create Account' : 'Sign In'}
+          {/* Hero: the gradient, the wordmark, one big line */}
+          <View style={[styles.hero, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
+            <Text style={styles.brand}>meep</Text>
+            <View style={styles.flex} />
+            <Text style={styles.headline} maxFontSizeMultiplier={1.3}>
+              Clear your head.{'\n'}
+              <Text style={styles.headlineMuted}>Meep plans the rest.</Text>
             </Text>
-          )}
-        </TouchableOpacity>
+          </View>
 
-        {/* Toggle sign in / sign up */}
-        <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)} style={styles.toggleRow}>
-          <Text style={[styles.toggleText, { color: theme.colors.textSecondary }]}>
-            {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-          </Text>
-          <Text style={[styles.toggleLink, { color: theme.colors.primary }]}>
-            {isSignUp ? 'Sign In' : 'Sign Up'}
-          </Text>
-        </TouchableOpacity>
+          {/* Bottom sheet */}
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+            <View style={styles.grabber} {...decorative} />
 
-        {/* Guest mode */}
-        <TouchableOpacity onPress={continueAsGuest} style={styles.guestButton}>
-          <Text style={[styles.guestText, { color: theme.colors.textSecondary }]}>
-            Continue without an account
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+            {sent ? (
+              <View style={styles.sentBody}>
+                <View style={styles.iconTile} {...decorative}>
+                  <FontAwesome name="envelope-open" size={18} color={TEXT} />
+                </View>
+                <Text accessibilityRole="header" style={[styles.title, styles.center]}>
+                  Check your <Text style={{ color: HIGHLIGHT }}>email</Text>
+                </Text>
+                <Text style={[styles.subtitle, styles.center]}>
+                  {sent.kind === 'signup'
+                    ? "We've sent a confirmation link to:"
+                    : "We've sent a password reset link to:"}
+                  {'\n'}
+                  <Text style={{ color: TEXT }}>{sent.email}</Text>
+                </Text>
+
+                <View style={styles.sentActions}>
+                  {Platform.OS === 'ios' ? (
+                    <PrimaryButton label="Open email app" onPress={() => Linking.openURL('message://')} />
+                  ) : (
+                    <PrimaryButton label="Back to sign in" onPress={() => { setSent(null); setMode('signin'); }} />
+                  )}
+                  <TextLink
+                    label="Resend email"
+                    onPress={handleResend}
+                    disabled={loading}
+                  />
+                  {Platform.OS === 'ios' && (
+                    <TextLink label="Back to sign in" onPress={() => { setSent(null); setMode('signin'); }} />
+                  )}
+                  {resendStatus ? (
+                    <Text
+                      style={[styles.status, styles.center]}
+                      accessibilityLiveRegion="polite"
+                      role="status"
+                    >
+                      {resendStatus}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : (
+              <>
+                <Text accessibilityRole="header" style={styles.title}>
+                  {isSignUp ? (
+                    <>Create your <Text style={{ color: HIGHLIGHT }}>account</Text></>
+                  ) : (
+                    <>Welcome <Text style={{ color: HIGHLIGHT }}>back</Text></>
+                  )}
+                </Text>
+                <Text style={styles.subtitle}>
+                  {isSignUp
+                    ? 'Save your plans and sync them across devices.'
+                    : 'Sign in to sync your calendar across devices.'}
+                </Text>
+
+                <Field
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                />
+                <Field
+                  ref={passwordRef}
+                  label="Password"
+                  right={
+                    !isSignUp ? (
+                      <Pressable
+                        onPress={handleForgot}
+                        disabled={loading}
+                        accessibilityRole="button"
+                        accessibilityLabel="Forgot password"
+                        hitSlop={hitSlopFor(20)}
+                      >
+                        <Text style={styles.forgot}>Forgot?</Text>
+                      </Pressable>
+                    ) : null
+                  }
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={isSignUp ? 'At least 6 characters' : 'Your password'}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType={isSignUp ? 'newPassword' : 'password'}
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                  returnKeyType="go"
+                  onSubmitEditing={handleEmailAuth}
+                />
+
+                {error ? (
+                  <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+                    {error}
+                  </Text>
+                ) : null}
+
+                <PrimaryButton
+                  label={isSignUp ? 'Create account' : 'Sign in'}
+                  onPress={handleEmailAuth}
+                  loading={loading}
+                />
+
+                <View style={styles.divider} {...decorative}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                {Platform.OS === 'ios' && ENABLE_APPLE_SIGN_IN ? (
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE}
+                    cornerRadius={BUTTON / 2}
+                    style={styles.appleButton}
+                    onPress={() => handleProvider(signInWithApple, 'Apple')}
+                  />
+                ) : null}
+
+                <View style={styles.row}>
+                  <Pressable
+                    onPress={() => handleProvider(signInWithGoogle, 'Google')}
+                    disabled={loading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Continue with Google"
+                    {...a11yState({ disabled: loading })}
+                    style={({ pressed }) => [styles.outline, styles.grow, pressed && styles.pressed]}
+                  >
+                    <FontAwesome name="google" size={16} color={TEXT} {...decorative} />
+                    <Text style={styles.outlineText}>Google</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={continueAsGuest}
+                    accessibilityRole="button"
+                    accessibilityLabel="Continue without an account"
+                    style={({ pressed }) => [styles.outline, styles.grow, pressed && styles.pressed]}
+                  >
+                    <FontAwesome name="user-o" size={15} color={TEXT} {...decorative} />
+                    <Text style={styles.outlineText}>Guest</Text>
+                  </Pressable>
+                </View>
+
+                <Pressable
+                  onPress={() => { setMode(isSignUp ? 'signin' : 'signup'); setError(null); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+                  style={styles.switchRow}
+                >
+                  <Text style={styles.switchText}>
+                    {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                    <Text style={styles.switchLink}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
+                  </Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
+function PrimaryButton({ label, onPress, loading = false }: { label: string; onPress: () => void; loading?: boolean }) {
+  const { theme } = useThemeStore();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      {...a11yState({ disabled: loading, busy: loading })}
+      style={({ pressed }) => [
+        styles.primary,
+        { backgroundColor: theme.colors.primary },
+        pressed && styles.pressed,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={theme.colors.onPrimary} />
+      ) : (
+        <Text style={[styles.primaryText, { color: theme.colors.onPrimary }]}>{label}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+function TextLink({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      {...a11yState({ disabled })}
+      style={({ pressed }) => [styles.textLink, pressed && styles.pressed]}
+    >
+      <Text style={styles.textLinkText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+type FieldProps = TextInputProps & { label: string; right?: React.ReactNode; ref?: React.Ref<TextInput> };
+
+/** Underlined field with a visible label (placeholders alone vanish once you type). */
+function Field({ label, right, ref, ...input }: FieldProps) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={[styles.field, { borderBottomColor: focused ? TEXT : LINE }]}>
+      <View style={styles.fieldLabelRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {right}
+      </View>
+      <TextInput
+        ref={ref}
+        {...input}
+        accessibilityLabel={label}
+        placeholderTextColor="rgba(245,245,245,0.42)"
+        onFocus={(e) => { setFocused(true); input.onFocus?.(e); }}
+        onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
+        style={styles.input}
+      />
+    </View>
+  );
+}
+
+const BUTTON = 54;
+
 const styles = StyleSheet.create({
-  container: {
+  root: {
+    flex: 1,
+    backgroundColor: '#0B0F12',
+  },
+  flex: {
     flex: 1,
   },
-  inner: {
+  scroll: {
+    flexGrow: 1,
+  },
+  hero: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 32,
+    minHeight: 220,
+    paddingHorizontal: 28,
+    paddingBottom: 28,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
+  brand: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
-  logo: {
-    fontSize: 48,
-    fontWeight: '800',
+  headline: {
+    color: '#FFFFFF',
+    fontSize: 40,
+    fontWeight: '300',
+    letterSpacing: -1.2,
+    lineHeight: 44,
+    textShadowColor: 'rgba(0,0,0,0.25)',
+    textShadowRadius: 12,
+  },
+  headlineMuted: {
+    color: 'rgba(255,255,255,0.78)',
+  },
+  sheet: {
+    backgroundColor: SHEET,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    boxShadow: '0 -12px 40px rgba(0,0,0,0.35)',
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginBottom: 22,
+  },
+  title: {
+    color: TEXT,
+    fontSize: 24,
+    fontWeight: '600',
+    letterSpacing: -0.4,
   },
   subtitle: {
-    fontSize: 16,
-    marginTop: 8,
+    color: MUTED,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
   },
-  googleButton: {
+  center: {
+    textAlign: 'center',
+  },
+  field: {
+    borderBottomWidth: 1,
+    marginTop: 20,
+  },
+  fieldLabelRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fieldLabel: {
+    color: MUTED,
+    fontSize: 13,
+  },
+  forgot: {
+    color: TEXT,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  input: {
+    color: TEXT,
+    fontSize: 16,
+    paddingVertical: 10,
+    minHeight: 44,
+  },
+  error: {
+    color: ERROR,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 14,
+  },
+  primary: {
+    height: BUTTON,
+    borderRadius: BUTTON / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderWidth: 1.5,
-    marginBottom: 20,
+    marginTop: 24,
   },
-  googleButtonText: {
+  primaryText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  pressed: {
+    opacity: 0.8,
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  appleButtonWrap: {
-    marginBottom: 20,
-  },
-  appleButton: {
-    width: '100%',
-    height: 48,
+    gap: 12,
+    marginVertical: 18,
   },
   dividerLine: {
     flex: 1,
-    height: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   dividerText: {
-    marginHorizontal: 12,
+    color: MUTED,
     fontSize: 13,
   },
-  input: {
-    padding: 16,
-    borderWidth: 1.5,
-    marginBottom: 12,
-    fontSize: 16,
+  appleButton: {
+    width: '100%',
+    height: BUTTON,
+    marginBottom: 10,
   },
-  primaryButton: {
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  toggleRow: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
+    gap: 10,
   },
-  toggleText: {
-    fontSize: 14,
+  grow: {
+    flex: 1,
   },
-  toggleLink: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  guestButton: {
+  outline: {
+    height: BUTTON,
+    borderRadius: BUTTON / 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 24,
-    paddingVertical: 12,
+    justifyContent: 'center',
+    gap: 10,
   },
-  guestText: {
+  outlineText: {
+    color: TEXT,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  switchRow: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  switchText: {
+    color: MUTED,
     fontSize: 14,
+  },
+  switchLink: {
+    color: TEXT,
+    fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  sentBody: {
+    alignItems: 'stretch',
+    paddingTop: 8,
+  },
+  iconTile: {
+    alignSelf: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#1F1F1F',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  sentActions: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  textLink: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  textLinkText: {
+    color: TEXT,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  status: {
+    color: MUTED,
+    fontSize: 13,
+    marginTop: 4,
   },
 });

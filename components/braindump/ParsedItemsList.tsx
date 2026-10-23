@@ -1,5 +1,7 @@
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { useEffect } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, AccessibilityInfo } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
+import { hitSlopFor } from '@/lib/accessibility';
 import ParsedItemCard from './ParsedItemCard';
 import type { ParsedItem } from '@/types';
 
@@ -21,6 +23,20 @@ export default function ParsedItemsList({
   const allConfirmed = activeItems.every((i) => i.status === 'confirmed');
   const hasUnconfirmed = activeItems.some((i) => i.status !== 'confirmed');
 
+  // Parsed results arrive asynchronously; announce them (iOS ignores live regions)
+  useEffect(() => {
+    if (activeItems.length === 0) return;
+    const count = `Found ${activeItems.length} item${activeItems.length === 1 ? '' : 's'} to review.`;
+    AccessibilityInfo.announceForAccessibility(summary ? `${count} ${summary}` : count);
+    // Announce once per result set, not on every confirm/delete
+  }, [summary]);
+
+  useEffect(() => {
+    if (allConfirmed && activeItems.length > 0) {
+      AccessibilityInfo.announceForAccessibility('All items saved');
+    }
+  }, [allConfirmed]);
+
   if (activeItems.length === 0) return null;
 
   return (
@@ -32,6 +48,7 @@ export default function ParsedItemsList({
             styles.summaryBox,
             { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.md },
           ]}
+          accessibilityLiveRegion="polite"
         >
           <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]}>
             {summary}
@@ -43,12 +60,15 @@ export default function ParsedItemsList({
       {hasUnconfirmed && (
         <TouchableOpacity
           onPress={onConfirmAll}
+          accessibilityRole="button"
+          accessibilityLabel={`Confirm all ${activeItems.length} items`}
+          hitSlop={hitSlopFor(42)}
           style={[
             styles.confirmAllButton,
             { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md },
           ]}
         >
-          <Text style={styles.confirmAllText}>Confirm All ({activeItems.length})</Text>
+          <Text style={[styles.confirmAllText, { color: theme.colors.onPrimary }]}>Confirm All ({activeItems.length})</Text>
         </TouchableOpacity>
       )}
 
@@ -58,6 +78,7 @@ export default function ParsedItemsList({
             styles.allDoneBox,
             { backgroundColor: (theme.colors.success || '#10B981') + '18', borderRadius: theme.borderRadius.md },
           ]}
+          accessibilityLiveRegion="polite"
         >
           <Text style={[styles.allDoneText, { color: theme.colors.success || '#10B981' }]}>
             All items saved!
@@ -99,7 +120,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   confirmAllText: {
-    color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
   },

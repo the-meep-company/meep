@@ -8,6 +8,21 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type CalendarEvent } from '@/types';
+import { useReduceMotion, hitSlopFor, a11yState } from '@/lib/accessibility';
+
+// Spoken names for the swatches in EVENT_COLORS (screen readers can't describe a hex).
+const COLOR_NAMES: Record<string, string> = {
+  '#6C5CE7': 'purple',
+  '#FF6B6B': 'coral',
+  '#4ECDC4': 'teal',
+  '#FFD93D': 'yellow',
+  '#2563EB': 'blue',
+  '#10B981': 'green',
+  '#F59E0B': 'amber',
+  '#EF4444': 'red',
+  '#8B5CF6': 'violet',
+  '#EC4899': 'pink',
+};
 
 interface EventFormModalProps {
   visible: boolean;
@@ -25,6 +40,7 @@ export default function EventFormModal({
   onEventSaved,
 }: EventFormModalProps) {
   const { theme } = useThemeStore();
+  const reduceMotion = useReduceMotion();
   const { addEvent, updateEvent, deleteEvent } = useCalendarStore();
 
   const defaultStart = initialDate ?? new Date();
@@ -107,13 +123,19 @@ export default function EventFormModal({
     h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal
+      visible={visible}
+      animationType={reduceMotion ? 'none' : 'slide'}
+      transparent
+      onRequestClose={resetAndClose}
+    >
       <View style={styles.overlay}>
         <View
+          accessibilityViewIsModal
           style={[
             styles.modal,
             {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: theme.colors.surfaceOpaque, // sheets must be solid: glass `surface` is see-through
               borderRadius: theme.borderRadius.lg,
             },
           ]}
@@ -121,15 +143,29 @@ export default function EventFormModal({
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Header */}
             <View style={styles.header}>
-              <TouchableOpacity onPress={resetAndClose}>
+              <TouchableOpacity
+                onPress={resetAndClose}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                hitSlop={hitSlopFor(20)}
+              >
                 <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>
                   Cancel
                 </Text>
               </TouchableOpacity>
-              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+              <Text
+                accessibilityRole="header"
+                style={[styles.headerTitle, { color: theme.colors.text }]}
+              >
                 {editEvent ? 'Edit Event' : 'New Event'}
               </Text>
-              <TouchableOpacity onPress={handleSave}>
+              <TouchableOpacity
+                onPress={handleSave}
+                accessibilityRole="button"
+                accessibilityLabel="Save event"
+                {...a11yState({ disabled: !title.trim() })}
+                hitSlop={hitSlopFor(20)}
+              >
                 <Text
                   style={{
                     color: title.trim() ? theme.colors.primary : theme.colors.textTertiary,
@@ -152,6 +188,7 @@ export default function EventFormModal({
                 },
               ]}
               placeholder="Event title"
+              accessibilityLabel="Event title"
               placeholderTextColor={theme.colors.textTertiary}
               value={title}
               onChangeText={setTitle}
@@ -169,6 +206,7 @@ export default function EventFormModal({
                 },
               ]}
               placeholder="Description (optional)"
+              accessibilityLabel="Description, optional"
               placeholderTextColor={theme.colors.textTertiary}
               value={description}
               onChangeText={setDescription}
@@ -177,7 +215,10 @@ export default function EventFormModal({
             />
 
             {/* Time pickers (simplified hour selectors) */}
-            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+            <Text
+              accessibilityRole="header"
+              style={[styles.label, { color: theme.colors.textSecondary }]}
+            >
               Time
             </Text>
             <View style={styles.timeRow}>
@@ -188,6 +229,9 @@ export default function EventFormModal({
                 <View style={styles.hourButtons}>
                   <TouchableOpacity
                     onPress={() => setStartHour((h) => (h - 1 + 24) % 24)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Start time one hour earlier, currently ${formatHour(startHour)}`}
+                    hitSlop={hitSlopFor(24)}
                   >
                     <Text style={[styles.hourArrow, { color: theme.colors.primary }]}>
                       ‹
@@ -198,6 +242,9 @@ export default function EventFormModal({
                   </Text>
                   <TouchableOpacity
                     onPress={() => setStartHour((h) => (h + 1) % 24)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Start time one hour later, currently ${formatHour(startHour)}`}
+                    hitSlop={hitSlopFor(24)}
                   >
                     <Text style={[styles.hourArrow, { color: theme.colors.primary }]}>
                       ›
@@ -217,6 +264,9 @@ export default function EventFormModal({
                 <View style={styles.hourButtons}>
                   <TouchableOpacity
                     onPress={() => setEndHour((h) => (h - 1 + 24) % 24)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`End time one hour earlier, currently ${formatHour(endHour)}`}
+                    hitSlop={hitSlopFor(24)}
                   >
                     <Text style={[styles.hourArrow, { color: theme.colors.primary }]}>
                       ‹
@@ -227,6 +277,9 @@ export default function EventFormModal({
                   </Text>
                   <TouchableOpacity
                     onPress={() => setEndHour((h) => (h + 1) % 24)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`End time one hour later, currently ${formatHour(endHour)}`}
+                    hitSlop={hitSlopFor(24)}
                   >
                     <Text style={[styles.hourArrow, { color: theme.colors.primary }]}>
                       ›
@@ -237,14 +290,25 @@ export default function EventFormModal({
             </View>
 
             {/* Color picker */}
-            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+            <Text
+              accessibilityRole="header"
+              style={[styles.label, { color: theme.colors.textSecondary }]}
+            >
               Color
             </Text>
-            <View style={styles.colorRow}>
+            <View
+              style={styles.colorRow}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Event color"
+            >
               {EVENT_COLORS.map((color) => (
                 <TouchableOpacity
                   key={color}
                   onPress={() => setSelectedColor(color)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Color: ${COLOR_NAMES[color] ?? color}`}
+                  {...a11yState({ checked: selectedColor === color })}
+                  hitSlop={hitSlopFor(28)}
                   style={[
                     styles.colorDot,
                     {
@@ -261,6 +325,8 @@ export default function EventFormModal({
             {editEvent && (
               <TouchableOpacity
                 onPress={handleDelete}
+                accessibilityRole="button"
+                accessibilityLabel="Delete event"
                 style={[
                   styles.deleteBtn,
                   {

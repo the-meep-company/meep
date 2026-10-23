@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { PRIORITY } from '@/lib/semanticColors';
+import {
+  StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView, AccessibilityInfo, Platform,
+} from 'react-native';
+
+// VoiceOver doesn't follow live regions; Android/web get the badge's live region instead.
+const announce = (msg: string) => {
+  if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(msg);
+};
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { format } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
+import { useReduceMotion, decorative, hitSlopFor } from '@/lib/accessibility';
 import type { ReorganizePlacement, Task } from '@/types';
 
-const PRIORITY_LABELS: Record<number, { label: string; color: string }> = {
-  1: { label: 'P1', color: '#EF4444' },
-  2: { label: 'P2', color: '#F59E0B' },
-  3: { label: 'P3', color: '#2563EB' },
-  4: { label: 'P4', color: '#9CA3AF' },
-};
+const PRIORITY_LABELS = PRIORITY;
 
 const fmtRange = (s: Date, e: Date) =>
   `${format(new Date(s), 'EEE MMM d, h:mm a')} – ${format(new Date(e), 'h:mm a')}`;
@@ -35,10 +39,12 @@ export default function ReorganizeConfirmModal({
   onClose,
 }: ReorganizeConfirmModalProps) {
   const { theme } = useThemeStore();
+  const reduceMotion = useReduceMotion();
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [rejected, setRejected] = useState<Set<string>>(new Set());
 
   const handleAccept = (placement: ReorganizePlacement) => {
+    announce(`Rescheduled ${placement.task.title}`);
     setAccepted((prev) => new Set(prev).add(placement.task.id));
     setRejected((prev) => {
       const next = new Set(prev);
@@ -49,12 +55,15 @@ export default function ReorganizeConfirmModal({
   };
 
   const handleReject = (taskId: string) => {
+    const title = placements.find((p) => p.task.id === taskId)?.task.title;
+    announce(title ? `Kept original time for ${title}` : 'Rejected');
     setRejected((prev) => new Set(prev).add(taskId));
     onReject(taskId);
   };
 
   const handleAcceptAll = () => {
     setAccepted(new Set(placements.map((p) => p.task.id)));
+    announce('All changes accepted');
     onAcceptAll();
   };
 
@@ -69,9 +78,15 @@ export default function ReorganizeConfirmModal({
   ).length;
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reduceMotion ? 'none' : 'slide'}
+      onRequestClose={handleClose}
+    >
       <View style={styles.overlay}>
         <View
+          accessibilityViewIsModal
           style={[
             styles.modal,
             {
@@ -84,12 +99,20 @@ export default function ReorganizeConfirmModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <FontAwesome name="refresh" size={18} color={theme.colors.primary} />
-              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+              <FontAwesome name="refresh" size={18} color={theme.colors.primary} {...decorative} />
+              <Text
+                accessibilityRole="header"
+                style={[styles.headerTitle, { color: theme.colors.text }]}
+              >
                 Your day was reorganized
               </Text>
             </View>
-            <TouchableOpacity onPress={handleClose}>
+            <TouchableOpacity
+              onPress={handleClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={hitSlopFor(20)}
+            >
               <FontAwesome name="times" size={20} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -98,12 +121,17 @@ export default function ReorganizeConfirmModal({
           {pendingCount > 0 && (
             <TouchableOpacity
               onPress={handleAcceptAll}
+              accessibilityRole="button"
+              accessibilityLabel={`Accept all ${pendingCount} ${pendingCount === 1 ? 'suggestion' : 'suggestions'}`}
+              hitSlop={hitSlopFor(42)}
               style={[
                 styles.acceptAllButton,
                 { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md },
               ]}
             >
-              <Text style={styles.acceptAllText}>Accept All ({pendingCount})</Text>
+              <Text style={[styles.acceptAllText, { color: theme.colors.onPrimary }]}>
+                Accept All ({pendingCount})
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -130,11 +158,17 @@ export default function ReorganizeConfirmModal({
                     <Text
                       style={[styles.cardTitle, { color: theme.colors.text }]}
                       numberOfLines={1}
+                      accessibilityLabel={
+                        isRejected ? `${placement.task.title}, rejected` : placement.task.title
+                      }
                     >
                       {placement.task.title}
                     </Text>
                     <View style={[styles.priorityBadge, { backgroundColor: priority.color + '20' }]}>
-                      <Text style={[styles.priorityText, { color: priority.color }]}>
+                      <Text
+                        style={[styles.priorityText, { color: priority.color }]}
+                        accessibilityLabel={`Priority ${placement.task.priority ?? 3}`}
+                      >
                         {priority.label}
                       </Text>
                     </View>
@@ -142,16 +176,22 @@ export default function ReorganizeConfirmModal({
 
                   {/* Old time — muted */}
                   <View style={styles.timeRow}>
-                    <FontAwesome name="clock-o" size={12} color={theme.colors.textTertiary} />
-                    <Text style={[styles.oldTimeText, { color: theme.colors.textTertiary }]}>
+                    <FontAwesome name="clock-o" size={12} color={theme.colors.textTertiary} {...decorative} />
+                    <Text
+                      style={[styles.oldTimeText, { color: theme.colors.textTertiary }]}
+                      accessibilityLabel={`Was ${fmtRange(placement.oldStart, placement.oldEnd)}`}
+                    >
                       {fmtRange(placement.oldStart, placement.oldEnd)}
                     </Text>
                   </View>
 
                   {/* New time — primary */}
                   <View style={styles.timeRow}>
-                    <FontAwesome name="arrow-right" size={11} color={theme.colors.primary} />
-                    <Text style={[styles.newTimeText, { color: theme.colors.primary }]}>
+                    <FontAwesome name="arrow-right" size={11} color={theme.colors.primary} {...decorative} />
+                    <Text
+                      style={[styles.newTimeText, { color: theme.colors.primary }]}
+                      accessibilityLabel={`Moved to ${fmtRange(placement.newStart, placement.newEnd)}`}
+                    >
                       {fmtRange(placement.newStart, placement.newEnd)}
                     </Text>
                   </View>
@@ -162,23 +202,32 @@ export default function ReorganizeConfirmModal({
 
                   {/* Action buttons */}
                   {isAccepted ? (
-                    <View style={[styles.rescheduledBadge, { backgroundColor: '#10B98120' }]}>
-                      <FontAwesome name="check" size={12} color="#10B981" />
-                      <Text style={[styles.rescheduledText, { color: '#10B981' }]}>Rescheduled</Text>
+                    <View
+                      style={[styles.rescheduledBadge, { backgroundColor: theme.colors.success + '20' }]}
+                      accessibilityLiveRegion="polite"
+                    >
+                      <FontAwesome name="check" size={12} color={theme.colors.success} {...decorative} />
+                      <Text style={[styles.rescheduledText, { color: theme.colors.success }]}>Rescheduled</Text>
                     </View>
                   ) : !isRejected ? (
                     <View style={styles.actionRow}>
                       <TouchableOpacity
                         onPress={() => handleReject(placement.task.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reject new time for ${placement.task.title}`}
+                        hitSlop={hitSlopFor(36)}
                         style={[styles.actionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1 }]}
                       >
                         <FontAwesome name="times" size={14} color={theme.colors.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleAccept(placement)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Accept new time for ${placement.task.title}`}
+                        hitSlop={hitSlopFor(36)}
                         style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
                       >
-                        <FontAwesome name="check" size={14} color="#FFF" />
+                        <FontAwesome name="check" size={14} color={theme.colors.onPrimary} />
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -189,7 +238,10 @@ export default function ReorganizeConfirmModal({
             {/* Unplaceable section */}
             {unplaceable.length > 0 && (
               <View style={styles.unplaceableSection}>
-                <Text style={[styles.unplaceableTitle, { color: theme.colors.textSecondary }]}>
+                <Text
+                  accessibilityRole="header"
+                  style={[styles.unplaceableTitle, { color: theme.colors.textSecondary }]}
+                >
                   Could not reschedule
                 </Text>
                 {unplaceable.map((item) => (
@@ -252,7 +304,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   acceptAllText: {
-    color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
   },

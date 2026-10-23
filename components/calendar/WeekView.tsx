@@ -7,10 +7,14 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
+import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
+import { decorative } from '@/lib/accessibility';
 import type { CalendarEvent } from '@/types';
 
 const HOUR_HEIGHT = 52;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const hourName = (hour: number) =>
+  hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
 
 interface WeekViewProps {
   onTimeSlotPress?: (date: Date) => void;
@@ -19,6 +23,7 @@ interface WeekViewProps {
 
 export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProps) {
   const { theme } = useThemeStore();
+  const tabClearance = useTabBarClearance();
   const { selectedDate, setSelectedDate, setView, getEventsForDate } = useCalendarStore();
   const { getActiveHabits } = useHabitStore();
   const activeHabits = getActiveHabits();
@@ -43,9 +48,9 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={styles.container}>
       {/* Day headers */}
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.timeGutter} />
         {days.map((day) => {
           const today = isToday(day);
@@ -55,11 +60,14 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
               key={day.toISOString()}
               style={styles.dayHeader}
               onPress={() => handleDayPress(day)}
+              accessibilityRole="button"
+              accessibilityLabel={`${format(day, 'EEEE d MMMM')}${today ? ', today' : ''}${selected ? ', selected' : ''}`}
+              accessibilityHint="Opens this day"
             >
               <Text
                 style={[
                   styles.dayName,
-                  { color: today ? theme.colors.primary : theme.colors.textTertiary },
+                  { color: today ? theme.colors.text : theme.colors.textSecondary },
                 ]}
               >
                 {format(day, 'EEE')}
@@ -67,22 +75,15 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
               <View
                 style={[
                   styles.dayNumber,
-                  today && {
-                    backgroundColor: theme.colors.primary,
-                    borderRadius: 16,
-                  },
+                  today && { backgroundColor: theme.colors.primary },
+                  selected &&
+                    !today && { borderWidth: 1.5, borderColor: theme.colors.primary },
                 ]}
               >
                 <Text
                   style={[
                     styles.dayNumberText,
-                    {
-                      color: today
-                        ? '#FFFFFF'
-                        : selected
-                        ? theme.colors.primary
-                        : theme.colors.text,
-                    },
+                    { color: today ? theme.colors.onPrimary : theme.colors.text },
                   ]}
                 >
                   {format(day, 'd')}
@@ -97,6 +98,7 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentOffset={{ x: 0, y: 7 * HOUR_HEIGHT }}
+        contentContainerStyle={{ paddingBottom: tabClearance }}
       >
         <View style={styles.grid}>
           {/* Hour rows */}
@@ -105,15 +107,9 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
               key={hour}
               style={[styles.hourRow, { height: HOUR_HEIGHT }]}
             >
-              <View style={styles.timeGutter}>
-                <Text style={[styles.hourLabel, { color: theme.colors.textTertiary }]}>
-                  {hour === 0
-                    ? ''
-                    : hour < 12
-                    ? `${hour} AM`
-                    : hour === 12
-                    ? '12 PM'
-                    : `${hour - 12} PM`}
+              <View style={styles.timeGutter} {...decorative}>
+                <Text style={[styles.hourLabel, { color: theme.colors.textSecondary }]}>
+                  {hour === 0 ? '' : hourName(hour)}
                 </Text>
               </View>
               {days.map((day) => (
@@ -124,6 +120,8 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
                     { borderColor: theme.colors.borderLight },
                   ]}
                   activeOpacity={0.6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add event, ${format(day, 'EEEE d MMMM')} at ${hourName(hour)}`}
                   onPress={() => {
                     if (onTimeSlotPress) {
                       const d = new Date(day);
@@ -149,6 +147,8 @@ export default function WeekView({ onTimeSlotPress, onEventPress }: WeekViewProp
                   key={event.id}
                   activeOpacity={0.7}
                   onPress={() => onEventPress?.(event)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${event.title}, ${format(new Date(event.startTime), 'EEEE h:mm a')} to ${format(new Date(event.endTime), 'h:mm a')}${event.isHabit ? ', habit' : ''}`}
                   style={[
                     styles.weekEvent,
                     {
@@ -188,7 +188,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
   },
   timeGutter: {
     width: 48,
@@ -206,6 +205,7 @@ const styles = StyleSheet.create({
   dayNumber: {
     width: 32,
     height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

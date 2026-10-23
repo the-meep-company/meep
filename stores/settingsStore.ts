@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AIPersona, WidgetCalendarView } from '@/types';
+import type {
+  AIPersona,
+  GlassBackgroundId,
+  GlassStyle,
+  GrainLevel,
+  WidgetCalendarView,
+} from '@/types';
 
 interface SettingsState {
   aiPersona: AIPersona;
@@ -14,6 +20,13 @@ interface SettingsState {
   ttsVoice: string | null;
   widgetCalendarView: WidgetCalendarView;
   widgetCategory: string | null;
+  glassStyle: GlassStyle;
+  /** A preset mesh background, or 'custom' to use customBackgroundUri. */
+  glassBackground: GlassBackgroundId | 'custom';
+  customBackgroundUri: string | null;
+  grain: GrainLevel;
+  /** Replace see-through glass with solid surfaces for maximum contrast. */
+  solidSurfaces: boolean;
   taskCarryOverEnabled: boolean;
 
   setPersona: (persona: AIPersona) => void;
@@ -26,6 +39,11 @@ interface SettingsState {
   setTtsVoice: (voice: string | null) => void;
   setWidgetCalendarView: (view: WidgetCalendarView) => void;
   setWidgetCategory: (category: string | null) => void;
+  setGlassStyle: (style: GlassStyle) => void;
+  setGlassBackground: (background: GlassBackgroundId | 'custom') => void;
+  setCustomBackground: (uri: string | null) => void;
+  setGrain: (grain: GrainLevel) => void;
+  setSolidSurfaces: (v: boolean) => void;
   setTaskCarryOverEnabled: (v: boolean) => void;
 }
 
@@ -65,6 +83,11 @@ export const useSettingsStore = create<SettingsState>()(
       ttsVoice: null,
       widgetCalendarView: 'daily',
       widgetCategory: null,
+      glassStyle: 'frosted',
+      glassBackground: 'midnight',
+      customBackgroundUri: null,
+      grain: 'subtle',
+      solidSurfaces: false,
       taskCarryOverEnabled: true,
 
       setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
@@ -77,6 +100,13 @@ export const useSettingsStore = create<SettingsState>()(
       setTtsVoice: (voice) => set({ ttsVoice: voice }),
       setWidgetCalendarView: (view) => set({ widgetCalendarView: view }),
       setWidgetCategory: (category) => set({ widgetCategory: category }),
+      setGlassStyle: (style) => set({ glassStyle: style }),
+      setGlassBackground: (background) => set({ glassBackground: background }),
+      // Setting a photo selects it; clearing it falls back to the default preset.
+      setCustomBackground: (uri) =>
+        set(uri ? { customBackgroundUri: uri, glassBackground: 'custom' } : { customBackgroundUri: null, glassBackground: 'midnight' }),
+      setGrain: (grain) => set({ grain }),
+      setSolidSurfaces: (v) => set({ solidSurfaces: v }),
       setTaskCarryOverEnabled: (v) => set({ taskCarryOverEnabled: v }),
     }),
     {
@@ -93,6 +123,11 @@ export const useSettingsStore = create<SettingsState>()(
         ttsVoice: state.ttsVoice,
         widgetCalendarView: state.widgetCalendarView,
         widgetCategory: state.widgetCategory,
+        glassStyle: state.glassStyle,
+        glassBackground: state.glassBackground,
+        customBackgroundUri: state.customBackgroundUri,
+        grain: state.grain,
+        solidSurfaces: state.solidSurfaces,
         taskCarryOverEnabled: state.taskCarryOverEnabled,
       }),
     }

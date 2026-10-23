@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, View, Text, FlatList, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, FlatList, AccessibilityInfo, Pressable } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { addDays, startOfDay } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
@@ -14,16 +14,30 @@ import { collectTaskPattern } from '@/lib/patternLearning';
 import { findCarryOverCandidates } from '@/lib/taskCarryOver';
 import TaskItem from '@/components/tasks/TaskItem';
 import TaskFormModal from '@/components/tasks/TaskFormModal';
+import GlassBackground from '@/components/common/GlassBackground';
+import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
 import ScheduleConfirmModal from '@/components/scheduling/ScheduleConfirmModal';
+import Card from '@/components/ui/Card';
+import IconButton from '@/components/ui/IconButton';
+import PillTabs from '@/components/ui/PillTabs';
+import ScreenHeader, { GlowAvatar } from '@/components/ui/ScreenHeader';
+import { DisplayTitle, SectionLabel } from '@/components/ui/Typography';
+import { decorative, hitSlopFor } from '@/lib/accessibility';
 import type { Task, ScheduleResult, CalendarEvent } from '@/types';
 
-const FILTERS = ['all', 'todo', 'done'] as const;
-const FILTER_LABELS = { all: 'All', todo: 'To Do', done: 'Done' };
+type Filter = 'all' | 'todo' | 'done';
 
 export default function TasksScreen() {
   const { theme } = useThemeStore();
+  const tabClearance = useTabBarClearance();
   const { filter, setFilter, getFilteredTasks } = useTaskStore();
   const allTasks = useTaskStore((s) => s.tasks);
+  const companionName = useSettingsStore((s) => s.companionName);
+
+  const topLevel = allTasks.filter((t) => !t.parentTaskId);
+  const doneCount = topLevel.filter((t) => t.status === 'done').length;
+  const todoCount = topLevel.length - doneCount;
+  const progress = topLevel.length > 0 ? doneCount / topLevel.length : 0;
   const taskCarryOverEnabled = useSettingsStore((s) => s.taskCarryOverEnabled);
 
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -59,7 +73,10 @@ export default function TasksScreen() {
     const unscheduled = allTasks.filter(
       (t) => t.status === 'todo' && !t.scheduledStart && !t.parentTaskId
     );
-    if (unscheduled.length === 0) return;
+    if (unscheduled.length === 0) {
+      AccessibilityInfo.announceForAccessibility('Everything is already scheduled');
+      return;
+    }
 
     const now = new Date();
     const rangeStart = startOfDay(now);
@@ -139,114 +156,138 @@ export default function TasksScreen() {
     }
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>Tasks</Text>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.scheduleBtn, { backgroundColor: theme.colors.primary + '18' }]}
-            onPress={handleAutoSchedule}
-          >
-            <FontAwesome name="magic" size={16} color={theme.colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}
-            onPress={() => {
-              setEditingTask(null);
-              setShowTaskForm(true);
-            }}
-          >
-            <Text style={styles.addBtnText}>+</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      {/* Carry-over banner */}
+  const filterOptions: { value: Filter; label: string; count: number }[] = [
+    { value: 'all', label: 'All', count: topLevel.length },
+    { value: 'todo', label: 'To do', count: todoCount },
+    { value: 'done', label: 'Done', count: doneCount },
+  ];
+
+  const listHeader = (
+    <View style={[styles.listHeader, { paddingHorizontal: theme.spacing.screen }]}>
+      <DisplayTitle lead="Your" title="tasks" />
+
+      {/* Hero: what's left today */}
+      <Card
+        variant="glow"
+        glow="apricot"
+        style={styles.hero}
+        accessible
+        accessibilityLabel={`${todoCount} ${todoCount === 1 ? 'task' : 'tasks'} to do. ${doneCount} of ${topLevel.length} done.`}
+      >
+        <SectionLabel style={{ color: theme.colors.text }}>Today</SectionLabel>
+        <View style={styles.heroRow}>
+          <Text style={[styles.heroNumber, { color: theme.colors.text }]}>{todoCount}</Text>
+          <Text style={[styles.heroUnit, { color: theme.colors.textSecondary }]}>
+            {todoCount === 1 ? 'task' : 'tasks'} to do
+          </Text>
+        </View>
+        <View style={styles.progressRow} {...decorative}>
+          <View
+            style={[
+              styles.progressFill,
+              { flex: Math.max(progress, 0.04), backgroundColor: theme.colors.primary },
+            ]}
+          />
+          {/* Hatched remainder, like a ruler */}
+          <View style={[styles.progressRest, { flex: Math.max(1 - progress, 0.0001) }]}>
+            {Array.from({ length: 48 }).map((_, i) => (
+              <View key={i} style={[styles.tick, { backgroundColor: theme.colors.textTertiary }]} />
+            ))}
+          </View>
+        </View>
+        <View style={styles.progressLabels}>
+          <Text style={[styles.caption, { color: theme.colors.textSecondary }]}>Done</Text>
+          <Text style={[styles.caption, { color: theme.colors.textSecondary }]}>
+            {doneCount} of {topLevel.length}
+          </Text>
+        </View>
+      </Card>
+
       {showCarryOverBanner && (
-        <View
-          style={[
-            styles.carryOverBanner,
-            {
-              backgroundColor: theme.colors.primary + '14',
-              borderColor: theme.colors.primary + '33',
-              borderRadius: theme.borderRadius.md,
-            },
-          ]}
-        >
-          <FontAwesome name="history" size={16} color={theme.colors.primary} />
-          <View style={styles.carryOverTextWrap}>
+        <Card style={styles.carryOver}>
+          <FontAwesome name="history" size={16} color={theme.colors.textSecondary} {...decorative} />
+          <View style={styles.carryOverText}>
             <Text style={[styles.carryOverTitle, { color: theme.colors.text }]}>
               {carryOverCandidates.length} unfinished{' '}
               {carryOverCandidates.length === 1 ? 'task' : 'tasks'} from before today
             </Text>
             <Text style={[styles.carryOverSub, { color: theme.colors.textSecondary }]}>
-              Move them to today so they don't get lost?
+              {carryOverCandidates.length === 1
+                ? "Move it to today so it doesn't get lost?"
+                : "Move them to today so they don't get lost?"}
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.carryOverAction, { backgroundColor: theme.colors.primary }]}
+          <Pressable
             onPress={handleCarryOver}
-          >
-            <Text style={styles.carryOverActionText}>Move</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.carryOverDismiss}
-            onPress={() => setCarryOverDismissed(true)}
-          >
-            <FontAwesome name="times" size={16} color={theme.colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Filter tabs */}
-      <View style={[styles.filterRow, { borderBottomColor: theme.colors.border }]}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f}
-            onPress={() => setFilter(f)}
-            style={[
-              styles.filterTab,
-              filter === f && {
-                borderBottomColor: theme.colors.primary,
-                borderBottomWidth: 2,
-              },
+            accessibilityRole="button"
+            accessibilityLabel={`Move ${carryOverCandidates.length} unfinished ${carryOverCandidates.length === 1 ? 'task' : 'tasks'} to today`}
+            hitSlop={hitSlopFor(36)}
+            style={({ pressed }) => [
+              styles.moveButton,
+              { backgroundColor: theme.colors.primary },
+              pressed && { opacity: 0.8 },
             ]}
           >
-            <Text
-              style={[
-                styles.filterLabel,
-                {
-                  color: filter === f ? theme.colors.primary : theme.colors.textSecondary,
-                  fontWeight: filter === f ? '600' : '400',
-                },
-              ]}
-            >
-              {FILTER_LABELS[f]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Task list */}
-      {tasks.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>
-            {filter === 'done' ? 'No completed tasks yet' : 'No tasks yet — tap + to add one'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={tasks}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TaskItem task={item} onPress={handleTaskPress} />
-          )}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
+            <Text style={[styles.moveButtonText, { color: theme.colors.onPrimary }]}>Move</Text>
+          </Pressable>
+          <IconButton
+            icon="times"
+            iconSize={14}
+            accessibilityLabel="Dismiss"
+            onPress={() => setCarryOverDismissed(true)}
+          />
+        </Card>
       )}
+
+      <PillTabs
+        options={filterOptions}
+        value={filter as Filter}
+        onChange={setFilter}
+        accessibilityLabel="Filter tasks"
+        style={styles.filters}
+      />
+    </View>
+  );
+
+  return (
+    <GlassBackground style={styles.container}>
+      <ScreenHeader
+        left={<GlowAvatar initial={companionName || 'M'} />}
+        right={
+          <>
+            <IconButton
+              icon="magic"
+              accessibilityLabel="Auto-schedule tasks"
+              accessibilityHint="Finds time in your calendar for unscheduled tasks"
+              onPress={handleAutoSchedule}
+            />
+            <IconButton
+              icon="plus"
+              variant="primary"
+              accessibilityLabel="Add task"
+              onPress={() => {
+                setEditingTask(null);
+                setShowTaskForm(true);
+              }}
+            />
+          </>
+        }
+      />
+
+      <FlatList
+        data={tasks}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <TaskItem task={item} onPress={handleTaskPress} />}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <Text style={[styles.empty, { color: theme.colors.textSecondary }]}>
+            {filter === 'done' ? 'No completed tasks yet' : 'No tasks yet. Tap + to add one.'}
+          </Text>
+        }
+        contentContainerStyle={{ paddingBottom: tabClearance }}
+        showsVerticalScrollIndicator={false}
+      />
 
       <TaskFormModal
         visible={showTaskForm}
@@ -265,7 +306,7 @@ export default function TasksScreen() {
           onClose={() => setShowScheduleModal(false)}
         />
       )}
-    </View>
+    </GlassBackground>
   );
 }
 
@@ -273,99 +314,98 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
+  listHeader: {
+    paddingTop: 8,
+    gap: 20,
+    marginBottom: 16,
+  },
+  hero: {
+    padding: 22,
+    gap: 6,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  heroNumber: {
+    fontSize: 64,
+    fontWeight: '200',
+    letterSpacing: -2,
+    lineHeight: 72,
+  },
+  heroUnit: {
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 18,
+    gap: 6,
+    marginTop: 10,
+  },
+  progressFill: {
+    height: 18,
+    borderRadius: 9,
+  },
+  progressRest: {
+    flexDirection: 'row',
+    height: 12,
+    gap: 3,
+    overflow: 'hidden',
+  },
+  tick: {
+    width: 2,
+    height: 12,
+    borderRadius: 1,
+  },
+  progressLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 12,
+    marginTop: 4,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
+  caption: {
+    fontSize: 12,
   },
-  headerButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  filters: {
+    marginTop: 4,
   },
-  scheduleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnText: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '600',
-    lineHeight: 24,
-  },
-  carryOverBanner: {
+  carryOver: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    borderWidth: 1,
+    paddingVertical: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
   },
-  carryOverTextWrap: {
+  carryOverText: {
     flex: 1,
+    gap: 2,
   },
   carryOverTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
   carryOverSub: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  carryOverAction: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  carryOverActionText: {
-    color: '#fff',
     fontSize: 13,
-    fontWeight: '600',
+    lineHeight: 18,
   },
-  carryOverDismiss: {
-    padding: 4,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    marginBottom: 12,
-  },
-  filterTab: {
-    paddingVertical: 10,
+  moveButton: {
+    minHeight: 36,
     paddingHorizontal: 16,
-  },
-  filterLabel: {
-    fontSize: 14,
-  },
-  list: {
-    paddingTop: 4,
-    paddingBottom: 20,
-  },
-  empty: {
-    flex: 1,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyText: {
+  moveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  empty: {
     fontSize: 15,
+    textAlign: 'center',
+    marginTop: 32,
+    paddingHorizontal: 40,
   },
 });

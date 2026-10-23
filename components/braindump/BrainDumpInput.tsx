@@ -1,9 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
-  StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
+  StyleSheet, View, TextInput, Pressable, ActivityIndicator, AccessibilityInfo,
 } from 'react-native';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { a11yState } from '@/lib/accessibility';
 import VoiceInput from '@/components/braindump/VoiceInput';
+import PillTabs from '@/components/ui/PillTabs';
+import { useSurfaceStyle } from '@/components/ui/surface';
 
 interface BrainDumpInputProps {
   onSubmit: (text: string) => void;
@@ -12,11 +16,17 @@ interface BrainDumpInputProps {
 
 export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInputProps) {
   const { theme } = useThemeStore();
+  const surface = useSurfaceStyle('strong');
   const [text, setText] = useState('');
   const [quickMode, setQuickMode] = useState(false);
   // Captures whatever was typed before voice started so we can prepend it correctly
   const textBeforeVoice = useRef('');
   const voiceSessionActive = useRef(false);
+
+  // Spinner replaces the button label, so tell screen-reader users work has started
+  useEffect(() => {
+    if (isProcessing) AccessibilityInfo.announceForAccessibility('Processing…');
+  }, [isProcessing]);
 
   const handleSubmit = () => {
     if (!text.trim() || isProcessing) return;
@@ -47,156 +57,118 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
     setText(prefix ? `${prefix}\n${interim}` : interim);
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Mode toggle */}
-      <View style={styles.modeToggle}>
-        <TouchableOpacity
-          onPress={() => setQuickMode(false)}
-          style={[
-            styles.modeButton,
-            {
-              backgroundColor: !quickMode ? theme.colors.primary : theme.colors.surface,
-              borderRadius: theme.borderRadius.md,
-            },
-          ]}
-        >
-          <Text style={[styles.modeText, { color: !quickMode ? '#FFF' : theme.colors.textSecondary }]}>
-            Brain Dump
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setQuickMode(true)}
-          style={[
-            styles.modeButton,
-            {
-              backgroundColor: quickMode ? theme.colors.primary : theme.colors.surface,
-              borderRadius: theme.borderRadius.md,
-            },
-          ]}
-        >
-          <Text style={[styles.modeText, { color: quickMode ? '#FFF' : theme.colors.textSecondary }]}>
-            Quick Add
-          </Text>
-        </TouchableOpacity>
-      </View>
+  const canSubmit = !!text.trim() && !isProcessing;
 
-      {/* Text input */}
-      <TextInput
-        style={[
-          quickMode ? styles.quickInput : styles.dumpInput,
-          {
-            backgroundColor: theme.colors.surface,
-            color: theme.colors.text,
-            borderColor: theme.colors.border,
-            borderRadius: theme.borderRadius.md,
-          },
+  return (
+    <View style={styles.container}>
+      <PillTabs
+        options={[
+          { value: 'dump', label: 'Brain dump' },
+          { value: 'quick', label: 'Quick add' },
         ]}
-        placeholder={
-          quickMode
-            ? 'Add: dentist at 3pm tomorrow'
-            : "What's on your mind? Dump everything here...\n\nExample:\ndentist tuesday 2pm\nbuy groceries by friday\nmeditate every morning\nlearn to cook"
-        }
-        placeholderTextColor={theme.colors.textTertiary}
-        value={text}
-        onChangeText={setText}
-        multiline={!quickMode}
-        textAlignVertical="top"
-        autoFocus
+        value={quickMode ? 'quick' : 'dump'}
+        onChange={(v) => setQuickMode(v === 'quick')}
+        accessibilityLabel="Input mode"
+        style={styles.modes}
       />
 
-      {/* Character count */}
-      {!quickMode && text.length > 0 && (
-        <Text style={[styles.charCount, { color: theme.colors.textTertiary }]}>
-          {text.length} characters
-        </Text>
-      )}
+      {/* Composer: a pill field with the send button inside, mic alongside */}
+      <View style={styles.composerRow}>
+        <View style={[styles.field, surface]}>
+          <TextInput
+            style={[styles.input, { color: theme.colors.text }]}
+            placeholder={quickMode ? 'Add: dentist at 3pm tomorrow' : 'Dump it all here…'}
+            placeholderTextColor={theme.colors.textTertiary}
+            accessibilityLabel={quickMode ? 'Quick add' : 'Brain dump'}
+            accessibilityHint={
+              quickMode
+                ? 'Describe one item, for example dentist at 3pm tomorrow'
+                : 'Type everything on your mind, one thing per line'
+            }
+            returnKeyType={quickMode ? 'done' : 'default'}
+            onSubmitEditing={quickMode ? handleSubmit : undefined}
+            value={text}
+            onChangeText={setText}
+            multiline={!quickMode}
+            numberOfLines={1}
+            textAlignVertical="center"
+          />
+          <Pressable
+            onPress={handleSubmit}
+            disabled={!canSubmit}
+            accessibilityRole="button"
+            accessibilityLabel={quickMode ? 'Add' : 'Process brain dump'}
+            {...a11yState({ disabled: !canSubmit, busy: isProcessing })}
+            style={({ pressed }) => [
+              styles.send,
+              canSubmit
+                ? { backgroundColor: theme.colors.primary }
+                : { backgroundColor: theme.colors.primaryLight },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            {isProcessing ? (
+              <ActivityIndicator color={theme.colors.text} size="small" />
+            ) : (
+              <FontAwesome
+                name="arrow-up"
+                size={16}
+                color={canSubmit ? theme.colors.onPrimary : theme.colors.textTertiary}
+              />
+            )}
+          </Pressable>
+        </View>
 
-      {/* Submit row: mic button + process button */}
-      <View style={styles.submitRow}>
-        <VoiceInput onTranscription={handleTranscription} onInterim={handleInterim} disabled={isProcessing} />
-
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={!text.trim() || isProcessing}
-          style={[
-            styles.submitButton,
-            {
-              backgroundColor: text.trim() && !isProcessing
-                ? theme.colors.primary
-                : theme.colors.surface,
-              borderRadius: theme.borderRadius.md,
-            },
-          ]}
-        >
-          {isProcessing ? (
-            <ActivityIndicator color="#FFF" size="small" />
-          ) : (
-            <Text
-              style={[
-                styles.submitText,
-                { color: text.trim() ? '#FFF' : theme.colors.textTertiary },
-              ]}
-            >
-              {quickMode ? 'Add' : 'Process'}
-            </Text>
-          )}
-        </TouchableOpacity>
+        <VoiceInput
+          size={FIELD}
+          onTranscription={handleTranscription}
+          onInterim={handleInterim}
+          disabled={isProcessing}
+        />
       </View>
     </View>
   );
 }
 
+const FIELD = 56;
+
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 16,
+    gap: 12,
   },
-  modeToggle: {
+  modes: {
+    alignSelf: 'flex-start',
+  },
+  composerRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  modeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  modeText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dumpInput: {
-    flex: 1,
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
-    borderWidth: 1,
-  },
-  quickInput: {
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    height: 56,
-  },
-  charCount: {
-    fontSize: 12,
-    textAlign: 'right',
-    marginTop: 8,
-  },
-  submitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: 10,
-    marginTop: 16,
   },
-  submitButton: {
+  field: {
     flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
+    minHeight: FIELD,
+    borderRadius: FIELD / 2,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingLeft: 22,
+    paddingRight: 6,
+    paddingVertical: 6,
   },
-  submitText: {
+  input: {
+    flex: 1,
+    maxHeight: 160,
+    minHeight: 44,
     fontSize: 16,
-    fontWeight: '700',
+    lineHeight: 22,
+    paddingTop: 11,
+    paddingBottom: 11,
+    paddingRight: 8,
+  },
+  send: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

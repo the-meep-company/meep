@@ -1,14 +1,15 @@
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useGlassPreset } from '@/lib/glass';
+import { decorative, hitSlopFor, a11yState } from '@/lib/accessibility';
+import { PRIORITY } from '@/lib/semanticColors';
+import { GlassLayers, glassFrame } from '@/components/common/GlassCard';
 import type { Task } from '@/types';
 
-const PRIORITY_LABELS: Record<number, { label: string; color: string }> = {
-  1: { label: 'P1', color: '#EF4444' },
-  2: { label: 'P2', color: '#F59E0B' },
-  3: { label: 'P3', color: '#2563EB' },
-  4: { label: 'P4', color: '#9CA3AF' },
-};
+
+const CHECKBOX = 26;
 
 interface TaskItemProps {
   task: Task;
@@ -18,38 +19,70 @@ interface TaskItemProps {
 export default function TaskItem({ task, onPress }: TaskItemProps) {
   const { theme } = useThemeStore();
   const { toggleStatus, getSubtasks } = useTaskStore();
+  const glass = useGlassPreset();
   const isDone = task.status === 'done';
   const subtasks = getSubtasks(task.id);
-  const priority = PRIORITY_LABELS[task.priority];
+  const subtasksDone = subtasks.filter((s) => s.status === 'done').length;
+  const priority = PRIORITY[task.priority];
+  const aiScheduled = task.scheduleSource === 'ai' && !!task.scheduledStart;
+  const radius = theme.borderRadius.md;
+
+  // One spoken summary for the details button.
+  const summary = [
+    task.title,
+    `${priority.name} priority`,
+    task.category,
+    subtasks.length > 0 ? `${subtasksDone} of ${subtasks.length} subtasks done` : null,
+    aiScheduled ? 'scheduled by AI' : null,
+    task.carryOverFrom && !isDone ? 'carried over' : null,
+    isDone ? 'done' : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
-    <TouchableOpacity
+    // The card itself isn't focusable: the checkbox and the details are two
+    // sibling controls so VoiceOver can reach both.
+    <View
       style={[
-        styles.container,
-        {
-          backgroundColor: theme.colors.surface,
-          borderRadius: theme.borderRadius.md,
-        },
+        styles.card,
+        { marginHorizontal: theme.spacing.screen },
+        theme.isGlass
+          ? glassFrame(glass, radius)
+          : {
+              borderRadius: radius,
+              backgroundColor: theme.colors.surface,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            },
       ]}
-      onPress={() => onPress(task)}
-      activeOpacity={0.7}
     >
-      {/* Checkbox */}
-      <TouchableOpacity
+      {theme.isGlass && <GlassLayers preset={glass} radius={radius} />}
+
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityLabel={task.title}
+        {...a11yState({ checked: isDone })}
+        hitSlop={hitSlopFor(CHECKBOX)}
+        onPress={() => toggleStatus(task.id)}
         style={[
           styles.checkbox,
           {
-            borderColor: isDone ? theme.colors.primary : theme.colors.border,
+            borderColor: isDone ? theme.colors.primary : theme.colors.textTertiary,
             backgroundColor: isDone ? theme.colors.primary : 'transparent',
           },
         ]}
-        onPress={() => toggleStatus(task.id)}
       >
-        {isDone && <Text style={styles.checkmark}>✓</Text>}
-      </TouchableOpacity>
+        {isDone && <FontAwesome name="check" size={13} color={theme.colors.onPrimary} />}
+      </Pressable>
 
-      {/* Content */}
-      <View style={styles.content}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={summary}
+        accessibilityHint="Opens task details"
+        onPress={() => onPress(task)}
+        style={({ pressed }) => [styles.details, pressed && { opacity: 0.7 }]}
+      >
         <View style={styles.titleRow}>
           <Text
             style={[
@@ -59,75 +92,65 @@ export default function TaskItem({ task, onPress }: TaskItemProps) {
                 textDecorationLine: isDone ? 'line-through' : 'none',
               },
             ]}
-            numberOfLines={1}
+            numberOfLines={2}
           >
             {task.title}
           </Text>
           {task.color && (
-            <View style={[styles.colorDot, { backgroundColor: task.color }]} />
+            <View style={[styles.colorDot, { backgroundColor: task.color }]} {...decorative} />
           )}
         </View>
 
         <View style={styles.metaRow}>
-          <View style={[styles.priorityBadge, { backgroundColor: priority.color + '20' }]}>
-            <Text style={[styles.priorityText, { color: priority.color }]}>
-              {priority.label}
-            </Text>
+          <View style={[styles.badge, { backgroundColor: priority.color + '24' }]}>
+            <Text style={[styles.badgeText, { color: priority.color }]}>{priority.label}</Text>
           </View>
           {task.category && (
-            <Text style={[styles.category, { color: theme.colors.textTertiary }]}>
-              {task.category}
-            </Text>
+            <Text style={[styles.meta, { color: theme.colors.textSecondary }]}>{task.category}</Text>
           )}
           {subtasks.length > 0 && (
-            <Text style={[styles.subtaskCount, { color: theme.colors.textTertiary }]}>
-              {subtasks.filter((s) => s.status === 'done').length}/{subtasks.length} subtasks
+            <Text style={[styles.meta, { color: theme.colors.textSecondary }]}>
+              {subtasksDone}/{subtasks.length} subtasks
             </Text>
           )}
-          {task.scheduleSource === 'ai' && task.scheduledStart && (
-            <View style={[styles.aiBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Text style={[styles.aiBadgeText, { color: theme.colors.primary }]}>
-                AI scheduled
-              </Text>
+          {aiScheduled && (
+            <View style={[styles.badge, { backgroundColor: theme.colors.primaryLight }]}>
+              <Text style={[styles.badgeText, { color: theme.colors.text }]}>AI scheduled</Text>
             </View>
           )}
           {task.carryOverFrom && !isDone && (
-            <View style={[styles.carryBadge, { backgroundColor: theme.colors.textTertiary + '20' }]}>
-              <Text style={[styles.carryBadgeText, { color: theme.colors.textSecondary }]}>
+            <View style={[styles.badge, { backgroundColor: theme.colors.primaryLight }]}>
+              <Text style={[styles.badgeText, { color: theme.colors.textSecondary }]}>
                 Carried over
               </Text>
             </View>
           )}
         </View>
-      </View>
-    </TouchableOpacity>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    paddingLeft: 16,
+    marginBottom: 10,
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
+    width: CHECKBOX,
+    height: CHECKBOX,
+    borderRadius: CHECKBOX / 2,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  checkmark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  content: {
+  details: {
     flex: 1,
+    paddingVertical: 16,
+    paddingLeft: 14,
+    paddingRight: 16,
   },
   titleRow: {
     flexDirection: 'row',
@@ -135,9 +158,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '500',
-    flex: 1,
+    lineHeight: 21,
   },
   colorDot: {
     width: 8,
@@ -147,40 +171,20 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
-    marginTop: 4,
+    marginTop: 6,
   },
-  priorityBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
-  priorityText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  category: {
-    fontSize: 12,
-  },
-  subtaskCount: {
-    fontSize: 12,
-  },
-  aiBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  aiBadgeText: {
+  badgeText: {
     fontSize: 11,
     fontWeight: '600',
   },
-  carryBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  carryBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+  meta: {
+    fontSize: 12,
   },
 });
