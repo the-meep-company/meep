@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { speak, stopSpeaking, isSpeaking } from '@/lib/tts';
+import { useReduceMotion, hitSlopFor } from '@/lib/accessibility';
 import type { ChatMessage } from '@/types';
 
 interface ChatBubbleProps {
@@ -21,7 +22,8 @@ export default function ChatBubble({
   onSpeakEnd,
 }: ChatBubbleProps) {
   const { theme } = useThemeStore();
-  const { aiPersona, ttsEnabled, ttsVoice, voiceLocale } = useSettingsStore();
+  const { aiPersona, ttsEnabled, ttsVoice, voiceLocale, companionName } = useSettingsStore();
+  const reduceMotion = useReduceMotion();
   const isUser = message.role === 'user';
   const isSpeakingThis = speakingMessageId === message.id;
 
@@ -29,7 +31,8 @@ export default function ChatBubble({
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
-    if (isSpeakingThis) {
+    // Reduce Motion: skip the pulse; the highlighted border still marks the speaking bubble
+    if (isSpeakingThis && !reduceMotion) {
       pulseLoop.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.04, duration: 500, useNativeDriver: true }),
@@ -42,7 +45,7 @@ export default function ChatBubble({
       pulseAnim.setValue(1);
     }
     return () => { pulseLoop.current?.stop(); };
-  }, [isSpeakingThis]);
+  }, [isSpeakingThis, reduceMotion]);
 
   const handleSpeak = async () => {
     const currentlySpeaking = await isSpeaking();
@@ -69,6 +72,8 @@ export default function ChatBubble({
     }, 300);
   };
 
+  const timeLabel = format(new Date(message.timestamp), 'h:mm a');
+
   return (
     <View style={[styles.row, isUser && styles.rowUser]}>
       <Animated.View
@@ -84,28 +89,36 @@ export default function ChatBubble({
           },
         ]}
       >
+        {/* Sender + time + message read as one element; the timestamp below is hidden to avoid repeating it */}
         <Text
+          accessibilityLabel={`${isUser ? 'You' : companionName || 'Meep'}, ${timeLabel}: ${message.content}`}
           style={[
             styles.text,
-            { color: isUser ? '#FFF' : theme.colors.text },
+            { color: isUser ? theme.colors.onPrimary : theme.colors.text },
           ]}
         >
           {message.content}
         </Text>
         <View style={styles.footer}>
           <Text
+            accessibilityElementsHidden
+            importantForAccessibility="no"
             style={[
               styles.time,
-              { color: isUser ? 'rgba(255,255,255,0.6)' : theme.colors.textTertiary },
+              isUser
+                ? { color: theme.colors.onPrimary, opacity: 0.6 }
+                : { color: theme.colors.textTertiary },
             ]}
           >
-            {format(new Date(message.timestamp), 'h:mm a')}
+            {timeLabel}
           </Text>
           {!isUser && ttsEnabled && (
             <TouchableOpacity
               onPress={handleSpeak}
               style={styles.speakButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={hitSlopFor(18)}
+              accessibilityRole="button"
+              accessibilityLabel={isSpeakingThis ? 'Stop reading aloud' : 'Read message aloud'}
             >
               <FontAwesome
                 name={isSpeakingThis ? 'stop-circle' : 'volume-up'}

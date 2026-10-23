@@ -82,6 +82,20 @@ export type CalendarView = 'day' | 'week' | 'month';
 // ===== Widget =====
 export type WidgetCalendarView = 'daily' | 'weekly' | 'monthly';
 
+// ===== Glass theme =====
+export type GlassStyle = 'clear' | 'frosted' | 'blur';
+export type GlassBackgroundId =
+  | 'midnight'
+  | 'meadow'
+  | 'sky'
+  | 'dusk'
+  | 'rose'
+  | 'studio'
+  | 'aurora'
+  | 'sunset'
+  | 'ember';
+export type GrainLevel = 'off' | 'subtle' | 'strong';
+
 // ===== Utility =====
 export interface TimeSlot {
   hour: number;

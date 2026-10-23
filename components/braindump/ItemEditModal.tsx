@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { hitSlopFor, a11yState } from '@/lib/accessibility';
 import type { ParsedItem, HabitFrequency, TaskPriority } from '@/types';
 
 interface ItemEditModalProps {
@@ -26,6 +27,9 @@ const FREQUENCIES: { value: HabitFrequency; label: string }[] = [
   { value: 'weekends', label: 'Weekends' },
   { value: 'custom', label: 'Custom' },
 ];
+
+// Option chips are ~32pt tall and sit 8pt apart: extend vertically to 44pt, horizontally only into the gap
+const OPTION_HIT_SLOP = { ...hitSlopFor(32), left: 4, right: 4 };
 
 export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEditModalProps) {
   const { theme } = useThemeStore();
@@ -95,9 +99,10 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
   if (!item) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View
+          accessibilityViewIsModal
           style={[
             styles.modal,
             {
@@ -109,10 +114,15 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
         >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]} accessibilityRole="header">
               Edit {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
             </Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={hitSlopFor(20)}
+            >
               <FontAwesome name="times" size={20} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -134,6 +144,8 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
               onChangeText={setTitle}
               placeholder="Title"
               placeholderTextColor={theme.colors.textTertiary}
+              accessibilityLabel="Title"
+              returnKeyType="done"
             />
 
             {/* Description */}
@@ -153,6 +165,7 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
               onChangeText={setDescription}
               placeholder="Description (optional)"
               placeholderTextColor={theme.colors.textTertiary}
+              accessibilityLabel="Description, optional"
               multiline
             />
 
@@ -160,11 +173,14 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
             {item.type === 'task' && (
               <>
                 <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Priority</Text>
-                <View style={styles.optionRow}>
+                <View style={styles.optionRow} accessibilityRole="radiogroup" accessibilityLabel="Priority">
                   {PRIORITIES.map((p) => (
                     <TouchableOpacity
                       key={p.value}
                       onPress={() => setPriority(p.value)}
+                      accessibilityRole="radio"
+                      {...a11yState({ checked: priority === p.value })}
+                      hitSlop={OPTION_HIT_SLOP}
                       style={[
                         styles.optionButton,
                         {
@@ -176,7 +192,7 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
                       <Text
                         style={[
                           styles.optionText,
-                          { color: priority === p.value ? '#FFF' : theme.colors.textSecondary },
+                          { color: priority === p.value ? theme.colors.onPrimary : theme.colors.textSecondary },
                         ]}
                       >
                         {p.label}
@@ -191,11 +207,14 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
             {item.type === 'habit' && (
               <>
                 <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Frequency</Text>
-                <View style={styles.optionRow}>
+                <View style={styles.optionRow} accessibilityRole="radiogroup" accessibilityLabel="Frequency">
                   {FREQUENCIES.map((f) => (
                     <TouchableOpacity
                       key={f.value}
                       onPress={() => setFrequency(f.value)}
+                      accessibilityRole="radio"
+                      {...a11yState({ checked: frequency === f.value })}
+                      hitSlop={OPTION_HIT_SLOP}
                       style={[
                         styles.optionButton,
                         {
@@ -207,7 +226,7 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
                       <Text
                         style={[
                           styles.optionText,
-                          { color: frequency === f.value ? '#FFF' : theme.colors.textSecondary },
+                          { color: frequency === f.value ? theme.colors.onPrimary : theme.colors.textSecondary },
                         ]}
                       >
                         {f.label}
@@ -231,6 +250,9 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
                   onChangeText={setStartTime}
                   placeholder="07:00"
                   placeholderTextColor={theme.colors.textTertiary}
+                  accessibilityLabel="Time, hours and minutes"
+                  keyboardType="numbers-and-punctuation"
+                  returnKeyType="done"
                 />
 
                 <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Duration (minutes)</Text>
@@ -249,6 +271,8 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
                   placeholder="30"
                   placeholderTextColor={theme.colors.textTertiary}
                   keyboardType="numeric"
+                  accessibilityLabel="Duration in minutes"
+                  returnKeyType="done"
                 />
               </>
             )}
@@ -257,12 +281,13 @@ export default function ItemEditModal({ item, visible, onClose, onSave }: ItemEd
           {/* Save button */}
           <TouchableOpacity
             onPress={handleSave}
+            accessibilityRole="button"
             style={[
               styles.saveButton,
               { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md },
             ]}
           >
-            <Text style={styles.saveText}>Save</Text>
+            <Text style={[styles.saveText, { color: theme.colors.onPrimary }]}>Save</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -327,7 +352,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   saveText: {
-    color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
   },

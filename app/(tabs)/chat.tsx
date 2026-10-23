@@ -22,12 +22,20 @@ import ChatInput from '@/components/braindump/ChatInput';
 import ActionConfirmCard from '@/components/braindump/ActionConfirmCard';
 import ItemEditModal from '@/components/braindump/ItemEditModal';
 import ScheduleConfirmModal from '@/components/scheduling/ScheduleConfirmModal';
+import GlassBackground from '@/components/common/GlassBackground';
+import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
+import ScreenHeader, { GlowAvatar } from '@/components/ui/ScreenHeader';
+import IconButton from '@/components/ui/IconButton';
+import { useSurfaceStyle } from '@/components/ui/surface';
+import { decorative } from '@/lib/accessibility';
 import type { ParsedItem, ChatMessage, ChatAction, ScheduleResult, CalendarEvent } from '@/types';
 
 type ScreenMode = 'input' | 'review' | 'chat';
 
 export default function MeepScreen() {
   const { theme } = useThemeStore();
+  const tabClearance = useTabBarClearance();
+  const surface = useSurfaceStyle('strong');
   const {
     messages, currentParsedItems, isProcessing,
     addMessage, setParsedItems, updateParsedItem, removeParsedItem,
@@ -371,68 +379,76 @@ export default function MeepScreen() {
   }, []);
 
   return (
+    <GlassBackground style={styles.container}>
+    {/* Bottom padding keeps the inputs above the floating tab bar */}
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      role="main"
+      style={[styles.container, { paddingBottom: tabClearance }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
     >
       {/* Header */}
-      <View style={styles.header}>
-        {screenMode === 'chat' ? (
-          <>
-            <TouchableOpacity onPress={handleBackFromChat} style={styles.backButton}>
-              <FontAwesome name="chevron-left" size={16} color={theme.colors.primary} />
-            </TouchableOpacity>
-            <Text style={[styles.title, { color: theme.colors.text }]}>{companionName}</Text>
-            {ttsEnabled && (
-              <TouchableOpacity
-                onPress={() => setTtsAutoRead(!ttsAutoRead)}
-                style={[
-                  styles.autoReadBtn,
-                  { backgroundColor: ttsAutoRead ? theme.colors.primary + '20' : 'transparent' },
-                ]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <FontAwesome
-                  name="volume-up"
-                  size={16}
-                  color={ttsAutoRead ? theme.colors.primary : theme.colors.textTertiary}
+      {screenMode === 'chat' ? (
+        <ScreenHeader
+          title={companionName}
+          left={
+            <IconButton icon="chevron-left" iconSize={14} accessibilityLabel="Back" onPress={handleBackFromChat} />
+          }
+          right={
+            <>
+              {ttsEnabled && (
+                <IconButton
+                  icon="volume-up"
+                  variant={ttsAutoRead ? 'primary' : 'plain'}
+                  selected={ttsAutoRead}
+                  accessibilityLabel={`Auto-read replies, ${ttsAutoRead ? 'on' : 'off'}`}
+                  onPress={() => setTtsAutoRead(!ttsAutoRead)}
                 />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={handleStartChat} style={{ marginLeft: 8 }}>
-              <Text style={[styles.newButton, { color: theme.colors.primary }]}>New Chat</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <Text style={[styles.title, { color: theme.colors.text }]}>Meep</Text>
-            {screenMode === 'review' && (
-              <TouchableOpacity onPress={handleNewDump}>
-                <Text style={[styles.newButton, { color: theme.colors.primary }]}>New</Text>
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-      </View>
+              )}
+              <IconButton icon="plus" accessibilityLabel="New chat" onPress={handleStartChat} />
+            </>
+          }
+        />
+      ) : screenMode === 'review' ? (
+        <ScreenHeader
+          title={companionName}
+          left={<GlowAvatar initial={companionName || 'M'} />}
+          right={
+            <IconButton
+              icon="plus"
+              variant="primary"
+              accessibilityLabel="New brain dump"
+              onPress={handleNewDump}
+            />
+          }
+        />
+      ) : (
+        <ScreenHeader
+          left={<Text style={[styles.brand, { color: theme.colors.textSecondary }]}>{companionName.toLowerCase()}</Text>}
+          right={
+            <Pressable
+              testID="chat-button"
+              accessibilityRole="button"
+              accessibilityLabel={`Chat with ${companionName}`}
+              accessibilityHint="Ask about your schedule, tasks, or anything else"
+              onPress={handleStartChat}
+              style={({ pressed }) => [styles.chatPill, surface, pressed && { opacity: 0.75 }]}
+            >
+              <FontAwesome name="comment-o" size={15} color={theme.colors.text} {...decorative} />
+              <Text style={[styles.chatPillText, { color: theme.colors.text }]}>Chat</Text>
+            </Pressable>
+          }
+        />
+      )}
 
       {/* Content */}
       {screenMode === 'input' ? (
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingHorizontal: theme.spacing.screen }]}>
+          <Text accessibilityRole="header" style={[styles.hero, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            What can I take off your mind today?
+          </Text>
+          <View style={styles.flex} />
           <BrainDumpInput onSubmit={handleBrainDump} isProcessing={isProcessing} />
-
-          <Pressable
-            testID="chat-button"
-            accessibilityRole="button"
-            style={[styles.chatButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-            onPress={handleStartChat}
-          >
-            <FontAwesome name="comments" size={18} color={theme.colors.primary} />
-            <Text style={[styles.chatButtonText, { color: theme.colors.text }]}>
-              Chat with {companionName}
-            </Text>
-            <FontAwesome name="chevron-right" size={14} color={theme.colors.textSecondary} />
-          </Pressable>
         </View>
       ) : screenMode === 'chat' ? (
         <View style={styles.reviewContainer}>
@@ -445,7 +461,7 @@ export default function MeepScreen() {
           >
             {messages.length === 0 && (
               <View style={styles.emptyChat}>
-                <FontAwesome name="comments-o" size={48} color={theme.colors.textTertiary} />
+                <FontAwesome name="comments-o" size={48} color={theme.colors.textTertiary} {...decorative} />
                 <Text style={[styles.emptyChatText, { color: theme.colors.textSecondary }]}>
                   Ask {companionName} about your schedule, tasks, or anything else!
                 </Text>
@@ -519,14 +535,18 @@ export default function MeepScreen() {
                     ]}
                   >
                     <View style={styles.schedulePromptHeader}>
-                      <FontAwesome name="magic" size={16} color={theme.colors.primary} />
-                      <Text style={[styles.schedulePromptText, { color: theme.colors.text }]}>
+                      <FontAwesome name="magic" size={16} color={theme.colors.text} {...decorative} />
+                      <Text
+                        accessibilityRole="header"
+                        style={[styles.schedulePromptText, { color: theme.colors.text }]}
+                      >
                         Want me to schedule your new tasks?
                       </Text>
                     </View>
                     <View style={styles.schedulePromptButtons}>
                       <TouchableOpacity
                         onPress={() => setShowSchedulePrompt(false)}
+                        accessibilityRole="button"
                         style={[styles.schedulePromptBtn, { borderColor: theme.colors.border, borderWidth: 1 }]}
                       >
                         <Text style={[styles.schedulePromptBtnText, { color: theme.colors.textSecondary }]}>
@@ -535,9 +555,10 @@ export default function MeepScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={handleTriggerSchedule}
+                        accessibilityRole="button"
                         style={[styles.schedulePromptBtn, { backgroundColor: theme.colors.primary }]}
                       >
-                        <Text style={[styles.schedulePromptBtnText, { color: '#FFF' }]}>
+                        <Text style={[styles.schedulePromptBtnText, { color: theme.colors.onPrimary }]}>
                           Yes, schedule
                         </Text>
                       </TouchableOpacity>
@@ -575,6 +596,7 @@ export default function MeepScreen() {
         />
       )}
     </KeyboardAvoidingView>
+    </GlassBackground>
   );
 }
 
@@ -582,48 +604,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 12,
-  },
-  backButton: {
-    padding: 4,
-    marginRight: 8,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    flex: 1,
-  },
-  newButton: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  autoReadBtn: {
-    padding: 6,
-    borderRadius: 8,
-  },
   inputContainer: {
     flex: 1,
+    paddingBottom: 12,
   },
-  chatButton: {
+  flex: {
+    flex: 1,
+  },
+  brand: {
+    fontSize: 15,
+    letterSpacing: 0.2,
+  },
+  hero: {
+    fontSize: 46,
+    fontWeight: '300',
+    letterSpacing: -1.4,
+    lineHeight: 50,
+    marginTop: 40,
+  },
+  chatPill: {
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 20,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    gap: 8,
   },
-  chatButtonText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
+  chatPillText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   reviewContainer: {
     flex: 1,

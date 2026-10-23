@@ -1,56 +1,49 @@
 import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
-import { useThemeStore } from '@/stores/themeStore';
+import FloatingTabBar from '@/components/navigation/FloatingTabBar';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
   color: string;
+  size?: number;
 }) {
-  return <FontAwesome size={24} style={{ marginBottom: -3 }} {...props} />;
+  return <FontAwesome size={props.size ?? 22} name={props.name} color={props.color} />;
 }
 
 export default function TabLayout() {
-  const { theme } = useThemeStore();
-
   return (
     <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: theme.colors.tabBarActive,
-        tabBarInactiveTintColor: theme.colors.tabBarInactive,
-        tabBarStyle: {
-          backgroundColor: theme.colors.tabBar,
-          borderTopColor: theme.colors.tabBarBorder,
-        },
-        headerShown: false,
-      }}
+      // Floating Liquid Glass pill; it overlays the screens so content scrolls under it.
+      tabBar={(props) => <FloatingTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen
         name="calendar"
         options={{
           title: 'Calendar',
-          tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
+          tabBarIcon: ({ color, size }) => <TabBarIcon name="calendar" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="tasks"
         options={{
           title: 'Tasks',
-          tabBarIcon: ({ color }) => <TabBarIcon name="check-circle" color={color} />,
+          tabBarIcon: ({ color, size }) => <TabBarIcon name="check-circle" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: 'Meep',
-          tabBarIcon: ({ color }) => <TabBarIcon name="magic" color={color} />,
+          tabBarIcon: ({ color, size }) => <TabBarIcon name="magic" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
+          tabBarIcon: ({ color, size }) => <TabBarIcon name="cog" color={color} size={size} />,
         }}
       />
       {/* Hide old template screens */}

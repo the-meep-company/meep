@@ -9,6 +9,7 @@ import { performSync } from '@/lib/googleCalendar';
 import { useTaskStore } from '@/stores/taskStore';
 import { usePatternStore } from '@/stores/patternStore';
 import { detectConflictingTasks, autoScheduleTasks } from '@/lib/scheduler';
+import GlassBackground from '@/components/common/GlassBackground';
 import CalendarHeader from '@/components/calendar/CalendarHeader';
 import DayView from '@/components/calendar/DayView';
 import WeekView from '@/components/calendar/WeekView';
@@ -154,7 +155,7 @@ export default function CalendarScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <GlassBackground style={styles.container}>
       <CalendarHeader />
 
       {currentView === 'day' && (
@@ -190,7 +191,7 @@ export default function CalendarScreen() {
         onAcceptAll={handleReorganizeAcceptAll}
         onClose={handleReorganizeClose}
       />
-    </View>
+    </GlassBackground>
   );
 }
 

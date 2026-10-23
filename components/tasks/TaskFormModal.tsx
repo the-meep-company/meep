@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PRIORITY } from '@/lib/semanticColors';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
   Modal, ScrollView, Platform,
@@ -7,6 +8,21 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type Task, type TaskPriority } from '@/types';
+import { useReduceMotion, hitSlopFor, a11yState } from '@/lib/accessibility';
+
+// Spoken names for the swatches in EVENT_COLORS (screen readers can't describe a hex).
+const COLOR_NAMES: Record<string, string> = {
+  '#6C5CE7': 'purple',
+  '#FF6B6B': 'coral',
+  '#4ECDC4': 'teal',
+  '#FFD93D': 'yellow',
+  '#2563EB': 'blue',
+  '#10B981': 'green',
+  '#F59E0B': 'amber',
+  '#EF4444': 'red',
+  '#8B5CF6': 'violet',
+  '#EC4899': 'pink',
+};
 
 interface TaskFormModalProps {
   visible: boolean;
@@ -14,15 +30,13 @@ interface TaskFormModalProps {
   onClose: () => void;
 }
 
-const PRIORITIES: { value: TaskPriority; label: string; color: string }[] = [
-  { value: 1, label: 'Urgent', color: '#EF4444' },
-  { value: 2, label: 'High', color: '#F59E0B' },
-  { value: 3, label: 'Medium', color: '#2563EB' },
-  { value: 4, label: 'Low', color: '#9CA3AF' },
-];
+const PRIORITIES: { value: TaskPriority; label: string; color: string }[] = ([1, 2, 3, 4] as const).map(
+  (value) => ({ value, label: PRIORITY[value].name, color: PRIORITY[value].color })
+);
 
 export default function TaskFormModal({ visible, editTask, onClose }: TaskFormModalProps) {
   const { theme } = useThemeStore();
+  const reduceMotion = useReduceMotion();
   const { addTask, updateTask, deleteTask } = useTaskStore();
 
   const [title, setTitle] = useState(editTask?.title ?? '');
@@ -89,13 +103,19 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal
+      visible={visible}
+      animationType={reduceMotion ? 'none' : 'slide'}
+      transparent
+      onRequestClose={resetAndClose}
+    >
       <View style={styles.overlay}>
         <View
+          accessibilityViewIsModal
           style={[
             styles.modal,
             {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: theme.colors.surfaceOpaque, // sheets must be solid: glass `surface` is see-through
               borderRadius: theme.borderRadius.lg,
             },
           ]}
@@ -103,15 +123,29 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Header */}
             <View style={styles.header}>
-              <TouchableOpacity onPress={resetAndClose}>
+              <TouchableOpacity
+                onPress={resetAndClose}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                hitSlop={hitSlopFor(20)}
+              >
                 <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>
                   Cancel
                 </Text>
               </TouchableOpacity>
-              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+              <Text
+                accessibilityRole="header"
+                style={[styles.headerTitle, { color: theme.colors.text }]}
+              >
                 {editTask ? 'Edit Task' : 'New Task'}
               </Text>
-              <TouchableOpacity onPress={handleSave}>
+              <TouchableOpacity
+                onPress={handleSave}
+                accessibilityRole="button"
+                accessibilityLabel="Save task"
+                {...a11yState({ disabled: !title.trim() })}
+                hitSlop={hitSlopFor(20)}
+              >
                 <Text
                   style={{
                     color: title.trim() ? theme.colors.primary : theme.colors.textTertiary,
@@ -134,6 +168,7 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
                 },
               ]}
               placeholder="Task title"
+              accessibilityLabel="Task title"
               placeholderTextColor={theme.colors.textTertiary}
               value={title}
               onChangeText={setTitle}
@@ -151,6 +186,7 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
                 },
               ]}
               placeholder="Description (optional)"
+              accessibilityLabel="Description, optional"
               placeholderTextColor={theme.colors.textTertiary}
               value={description}
               onChangeText={setDescription}
@@ -169,20 +205,32 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
                 },
               ]}
               placeholder="Category (optional, e.g. Work, Personal)"
+              accessibilityLabel="Category, optional"
               placeholderTextColor={theme.colors.textTertiary}
               value={category}
               onChangeText={setCategory}
             />
 
             {/* Priority picker */}
-            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+            <Text
+              accessibilityRole="header"
+              style={[styles.label, { color: theme.colors.textSecondary }]}
+            >
               Priority
             </Text>
-            <View style={styles.priorityRow}>
+            <View
+              style={styles.priorityRow}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Priority"
+            >
               {PRIORITIES.map((p) => (
                 <TouchableOpacity
                   key={p.value}
                   onPress={() => setPriority(p.value)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${p.label} priority`}
+                  {...a11yState({ checked: priority === p.value })}
+                  hitSlop={hitSlopFor(36)}
                   style={[
                     styles.priorityBtn,
                     {
@@ -207,14 +255,25 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
             </View>
 
             {/* Color picker */}
-            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
+            <Text
+              accessibilityRole="header"
+              style={[styles.label, { color: theme.colors.textSecondary }]}
+            >
               Color
             </Text>
-            <View style={styles.colorRow}>
+            <View
+              style={styles.colorRow}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Task color"
+            >
               {EVENT_COLORS.map((color) => (
                 <TouchableOpacity
                   key={color}
                   onPress={() => setSelectedColor(color)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Color: ${COLOR_NAMES[color] ?? color}`}
+                  {...a11yState({ checked: selectedColor === color })}
+                  hitSlop={hitSlopFor(28)}
                   style={[
                     styles.colorDot,
                     {
@@ -231,6 +290,8 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
             {editTask && (
               <TouchableOpacity
                 onPress={handleDelete}
+                accessibilityRole="button"
+                accessibilityLabel="Delete task"
                 style={[
                   styles.deleteBtn,
                   {

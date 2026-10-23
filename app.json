@@ -43,7 +43,13 @@
       "expo-router",
       "expo-localization",
       "expo-apple-authentication",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Meep uses your photos so you can set your own background."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

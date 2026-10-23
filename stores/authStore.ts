@@ -37,6 +37,8 @@ interface AuthState {
   signInWithApple: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string) => Promise<{ error?: string }>;
+  resendSignUpEmail: (email: string) => Promise<{ error?: string }>;
+  resetPassword: (email: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
 }
@@ -197,6 +199,18 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     return {};
   },
 
+  resendSignUpEmail: async (email) => {
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    if (error) return { error: error.message };
+    return {};
+  },
+
+  resetPassword: async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) return { error: error.message };
+    return {};
+  },
+
   signOut: async () => {
     await AsyncStorage.removeItem(GOOGLE_TOKEN_KEY);
     await supabase.auth.signOut();
@@ -225,7 +239,7 @@ async function performSync(userId: string) {
       settings.setCompanionName(merged.settings.companionName);
       settings.setVoiceLocale(merged.settings.voiceLocale);
       if (merged.settings.theme) {
-        useThemeStore.getState().setTheme(merged.settings.theme as any);
+        useThemeStore.getState().setTheme(merged.settings.theme);
       }
     } else {
       // First login — push local settings to remote

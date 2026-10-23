@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, TouchableOpacity, ActivityIndicator, View, Text } from 'react-native';
+import { StyleSheet, TouchableOpacity, ActivityIndicator, View, Text, AccessibilityInfo } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,6 +12,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import * as voice from '@/lib/voice';
+import { useReduceMotion, a11yState } from '@/lib/accessibility';
 
 type VoiceState = 'idle' | 'recording' | 'processing';
 
@@ -19,15 +20,18 @@ interface VoiceInputProps {
   onTranscription: (text: string) => void;
   onInterim?: (text: string) => void;
   disabled?: boolean;
+  /** Button diameter (default 48). */
+  size?: number;
 }
 
-export default function VoiceInput({ onTranscription, onInterim, disabled = false }: VoiceInputProps) {
+export default function VoiceInput({ onTranscription, onInterim, disabled = false, size = SIZE }: VoiceInputProps) {
   const { theme } = useThemeStore();
   const { voiceLocale } = useSettingsStore();
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [supported, setSupported] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reduceMotion = useReduceMotion();
 
   // Animate the button background opacity to pulse while recording
   const bgOpacity = useSharedValue(0.15);
@@ -37,6 +41,8 @@ export default function VoiceInput({ onTranscription, onInterim, disabled = fals
   }));
 
   const startPulse = () => {
+    // Reduce Motion: keep the static tint; the red border + stop icon still show recording
+    if (reduceMotion) return;
     bgOpacity.value = withRepeat(
       withTiming(0.4, { duration: 700, easing: Easing.inOut(Easing.ease) }),
       -1,
@@ -52,6 +58,7 @@ export default function VoiceInput({ onTranscription, onInterim, disabled = fals
   const showError = (msg: string) => {
     if (errorTimer.current) clearTimeout(errorTimer.current);
     setErrorMsg(msg);
+    AccessibilityInfo.announceForAccessibility(msg);
     errorTimer.current = setTimeout(() => setErrorMsg(null), 3000);
   };
 
@@ -120,10 +127,15 @@ export default function VoiceInput({ onTranscription, onInterim, disabled = fals
         onPress={handlePress}
         disabled={disabled || isProcessing}
         accessibilityRole="button"
-        accessibilityLabel={isRecording ? 'Stop recording' : 'Start voice input'}
+        accessibilityLabel={
+          isRecording ? 'Stop recording' : isProcessing ? 'Processing voice input' : 'Start voice input'
+        }
+        {...a11yState({ disabled: disabled || isProcessing, busy: isProcessing })}
         style={[
           styles.button,
           {
+            width: size,
+            height: size,
             borderColor,
             borderRadius: theme.borderRadius.full,
             // Static base background
@@ -154,7 +166,14 @@ export default function VoiceInput({ onTranscription, onInterim, disabled = fals
       </TouchableOpacity>
 
       {errorMsg && (
-        <Text style={[styles.errorText, { color: theme.colors.error }]}>
+        <Text
+          style={[
+            styles.errorText,
+            { bottom: size + 8, color: theme.colors.error, backgroundColor: theme.colors.surfaceOpaque },
+          ]}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+        >
           {errorMsg}
         </Text>
       )}
@@ -166,19 +185,23 @@ const SIZE = 48;
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
   },
   button: {
-    width: SIZE,
-    height: SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     overflow: 'hidden', // clips the animated bg to the circle
   },
+  // Floats above the button so a message doesn't shift the layout around it.
   errorText: {
+    position: 'absolute',
+    right: 0,
+    width: 200,
     fontSize: 12,
-    marginTop: 6,
-    maxWidth: 200,
+    lineHeight: 16,
+    padding: 8,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
 });
