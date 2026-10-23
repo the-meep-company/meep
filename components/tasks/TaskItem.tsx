@@ -34,6 +34,7 @@ export default function TaskItem({ task, onPress }: TaskItemProps) {
     task.category,
     subtasks.length > 0 ? `${subtasksDone} of ${subtasks.length} subtasks done` : null,
     aiScheduled ? 'scheduled by AI' : null,
+    task.carryOverFrom && !isDone ? 'carried over' : null,
     isDone ? 'done' : null,
   ]
     .filter(Boolean)
@@ -115,6 +116,13 @@ export default function TaskItem({ task, onPress }: TaskItemProps) {
           {aiScheduled && (
             <View style={[styles.badge, { backgroundColor: theme.colors.primaryLight }]}>
               <Text style={[styles.badgeText, { color: theme.colors.text }]}>AI scheduled</Text>
+            </View>
+          )}
+          {task.carryOverFrom && !isDone && (
+            <View style={[styles.badge, { backgroundColor: theme.colors.primaryLight }]}>
+              <Text style={[styles.badgeText, { color: theme.colors.textSecondary }]}>
+                Carried over
+              </Text>
             </View>
           )}
         </View>

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { StyleSheet, View, Text, FlatList, AccessibilityInfo } from 'react-native';
+import { useMemo, useState } from 'react';
+import { StyleSheet, View, Text, FlatList, AccessibilityInfo, Pressable } from 'react-native';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { addDays, startOfDay } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
@@ -10,6 +11,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import { autoScheduleTasks } from '@/lib/scheduler';
 import { collectTaskPattern } from '@/lib/patternLearning';
+import { findCarryOverCandidates } from '@/lib/taskCarryOver';
 import TaskItem from '@/components/tasks/TaskItem';
 import TaskFormModal from '@/components/tasks/TaskFormModal';
 import GlassBackground from '@/components/common/GlassBackground';
@@ -20,7 +22,7 @@ import IconButton from '@/components/ui/IconButton';
 import PillTabs from '@/components/ui/PillTabs';
 import ScreenHeader, { GlowAvatar } from '@/components/ui/ScreenHeader';
 import { DisplayTitle, SectionLabel } from '@/components/ui/Typography';
-import { decorative } from '@/lib/accessibility';
+import { decorative, hitSlopFor } from '@/lib/accessibility';
 import type { Task, ScheduleResult, CalendarEvent } from '@/types';
 
 type Filter = 'all' | 'todo' | 'done';
@@ -36,13 +38,25 @@ export default function TasksScreen() {
   const doneCount = topLevel.filter((t) => t.status === 'done').length;
   const todoCount = topLevel.length - doneCount;
   const progress = topLevel.length > 0 ? doneCount / topLevel.length : 0;
+  const taskCarryOverEnabled = useSettingsStore((s) => s.taskCarryOverEnabled);
 
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
+  const [carryOverDismissed, setCarryOverDismissed] = useState(false);
 
   const tasks = getFilteredTasks();
+
+  const carryOverCandidates = useMemo(
+    () => (taskCarryOverEnabled ? findCarryOverCandidates(allTasks) : []),
+    [allTasks, taskCarryOverEnabled]
+  );
+  const showCarryOverBanner = carryOverCandidates.length > 0 && !carryOverDismissed;
+
+  const handleCarryOver = () => {
+    useTaskStore.getState().carryOverTasks();
+  };
 
   const handleTaskPress = (task: Task) => {
     setEditingTask(task);
@@ -190,6 +204,40 @@ export default function TasksScreen() {
         </View>
       </Card>
 
+      {showCarryOverBanner && (
+        <Card style={styles.carryOver}>
+          <FontAwesome name="history" size={16} color={theme.colors.textSecondary} {...decorative} />
+          <View style={styles.carryOverText}>
+            <Text style={[styles.carryOverTitle, { color: theme.colors.text }]}>
+              {carryOverCandidates.length} unfinished{' '}
+              {carryOverCandidates.length === 1 ? 'task' : 'tasks'} from before today
+            </Text>
+            <Text style={[styles.carryOverSub, { color: theme.colors.textSecondary }]}>
+              Move them to today so they don't get lost?
+            </Text>
+          </View>
+          <Pressable
+            onPress={handleCarryOver}
+            accessibilityRole="button"
+            accessibilityLabel={`Move ${carryOverCandidates.length} unfinished ${carryOverCandidates.length === 1 ? 'task' : 'tasks'} to today`}
+            hitSlop={hitSlopFor(36)}
+            style={({ pressed }) => [
+              styles.moveButton,
+              { backgroundColor: theme.colors.primary },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <Text style={[styles.moveButtonText, { color: theme.colors.onPrimary }]}>Move</Text>
+          </Pressable>
+          <IconButton
+            icon="times"
+            iconSize={14}
+            accessibilityLabel="Dismiss"
+            onPress={() => setCarryOverDismissed(true)}
+          />
+        </Card>
+      )}
+
       <PillTabs
         options={filterOptions}
         value={filter as Filter}
@@ -320,6 +368,37 @@ const styles = StyleSheet.create({
   },
   filters: {
     marginTop: 4,
+  },
+  carryOver: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
+  },
+  carryOverText: {
+    flex: 1,
+    gap: 2,
+  },
+  carryOverTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  carryOverSub: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  moveButton: {
+    minHeight: 36,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   empty: {
     fontSize: 15,

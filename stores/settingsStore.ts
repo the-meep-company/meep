@@ -27,6 +27,7 @@ interface SettingsState {
   grain: GrainLevel;
   /** Replace see-through glass with solid surfaces for maximum contrast. */
   solidSurfaces: boolean;
+  taskCarryOverEnabled: boolean;
 
   setPersona: (persona: AIPersona) => void;
   setTimezone: (tz: string) => void;
@@ -43,6 +44,7 @@ interface SettingsState {
   setCustomBackground: (uri: string | null) => void;
   setGrain: (grain: GrainLevel) => void;
   setSolidSurfaces: (v: boolean) => void;
+  setTaskCarryOverEnabled: (v: boolean) => void;
 }
 
 const defaultTimezone =
@@ -86,6 +88,7 @@ export const useSettingsStore = create<SettingsState>()(
       customBackgroundUri: null,
       grain: 'subtle',
       solidSurfaces: false,
+      taskCarryOverEnabled: true,
 
       setPersona: (persona) => { set({ aiPersona: persona }); syncSettings(); },
       setTimezone: (tz) => { set({ timezone: tz }); syncSettings(); },
@@ -104,6 +107,7 @@ export const useSettingsStore = create<SettingsState>()(
         set(uri ? { customBackgroundUri: uri, glassBackground: 'custom' } : { customBackgroundUri: null, glassBackground: 'midnight' }),
       setGrain: (grain) => set({ grain }),
       setSolidSurfaces: (v) => set({ solidSurfaces: v }),
+      setTaskCarryOverEnabled: (v) => set({ taskCarryOverEnabled: v }),
     }),
     {
       name: 'meep-settings',
@@ -124,6 +128,7 @@ export const useSettingsStore = create<SettingsState>()(
         customBackgroundUri: state.customBackgroundUri,
         grain: state.grain,
         solidSurfaces: state.solidSurfaces,
+        taskCarryOverEnabled: state.taskCarryOverEnabled,
       }),
     }
   )

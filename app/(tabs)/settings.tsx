@@ -69,6 +69,7 @@ export default function SettingsScreen() {
     setTtsEnabled, setTtsAutoRead, setTtsVoice, setGlassStyle,
     setGlassBackground, setCustomBackground, setGrain,
     solidSurfaces, setSolidSurfaces,
+    taskCarryOverEnabled, setTaskCarryOverEnabled,
   } = useSettingsStore();
   const tabClearance = useTabBarClearance();
   const [swatchGridWidth, setSwatchGridWidth] = useState(0);
@@ -465,6 +466,17 @@ export default function SettingsScreen() {
             description={`Currently ${timezone}`}
             value={timezoneAutoDetect}
             onValueChange={setTimezoneAutoDetect}
+          />
+        </SettingsGroup>
+
+        {section('Tasks')}
+        <SettingsGroup>
+          <SettingsRow
+            kind="switch"
+            title="Carry over unfinished tasks"
+            description="Offer to move past-due, incomplete tasks to today"
+            value={taskCarryOverEnabled}
+            onValueChange={setTaskCarryOverEnabled}
           />
         </SettingsGroup>
 
