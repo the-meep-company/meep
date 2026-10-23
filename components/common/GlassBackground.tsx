@@ -129,7 +129,8 @@ export default function GlassBackground({ children, style }: Props) {
   }
 
   return (
-    <View style={[styles.fill, { backgroundColor: theme.colors.background }, style]}>
+    // The screen's main landmark (the floating tab bar is the navigation one).
+    <View role="main" style={[styles.fill, { backgroundColor: theme.colors.background }, style]}>
       {layers}
       {(theme.isGlass || theme.backdrop) && <GrainOverlay level={grain} />}
       {children}

@@ -213,7 +213,9 @@ export default function TasksScreen() {
               {carryOverCandidates.length === 1 ? 'task' : 'tasks'} from before today
             </Text>
             <Text style={[styles.carryOverSub, { color: theme.colors.textSecondary }]}>
-              Move them to today so they don't get lost?
+              {carryOverCandidates.length === 1
+                ? "Move it to today so it doesn't get lost?"
+                : "Move them to today so they don't get lost?"}
             </Text>
           </View>
           <Pressable

@@ -382,7 +382,6 @@ export default function MeepScreen() {
     <GlassBackground style={styles.container}>
     {/* Bottom padding keeps the inputs above the floating tab bar */}
     <KeyboardAvoidingView
-      role="main"
       style={[styles.container, { paddingBottom: tabClearance }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
