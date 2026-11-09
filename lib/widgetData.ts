@@ -1,14 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { ExtensionStorage } from '@bacons/apple-targets';
+import Constants from 'expo-constants';
 import { addDays, startOfDay, endOfDay, startOfMonth, endOfMonth, format } from 'date-fns';
 import type { AIPersona, CalendarEvent, Task, WidgetCalendarView } from '@/types';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
-export const WIDGET_APP_GROUP =
-  process.env.EXPO_PUBLIC_WIDGET_APP_GROUP ?? 'group.com.themeepcompany.meep';
+export const WIDGET_APP_GROUP: string =
+  process.env.EXPO_PUBLIC_WIDGET_APP_GROUP ??
+  Constants.expoConfig?.extra?.widgetAppGroup ??
+  'group.com.themeepcompany.meep';
 export const WIDGET_STORAGE_KEY = 'meep_widget_payload';
 
 const FALLBACK_STORAGE_KEY = 'meep_widget_payload_fallback';

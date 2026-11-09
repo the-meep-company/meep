@@ -33,7 +33,12 @@ struct MeepWidgetTask: Codable, Identifiable {
 }
 
 enum MeepWidgetStore {
-    static let appGroup = "group.com.themeepcompany.meep"
+    // group.<app bundle id>, matching app.config.js (widget id is <app id>.widget).
+    static let appGroup: String = {
+        let widgetId = Bundle.main.bundleIdentifier ?? "com.themeepcompany.meep.widget"
+        let appId = widgetId.hasSuffix(".widget") ? String(widgetId.dropLast(".widget".count)) : widgetId
+        return "group.\(appId)"
+    }()
     static let storageKey = "meep_widget_payload"
 
     static let isoFormatter: ISO8601DateFormatter = {

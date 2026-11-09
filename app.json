@@ -50,7 +50,8 @@
           "photosPermission": "Meep uses your photos so you can set your own background."
         }
       ],
-      "./plugins/withMinPodsDeploymentTarget"
+      "./plugins/withMinPodsDeploymentTarget",
+      "./plugins/withSceneLifecycle"
     ],
     "experiments": {
       "typedRoutes": true
