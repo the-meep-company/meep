@@ -262,3 +262,35 @@ export interface ReorganizePlacement {
   reason: string;
   confidence: number;
 }
+
+// ===== Meeples (task agents) =====
+export interface MeepleSource {
+  title: string;
+  url: string;
+}
+
+export interface MeepleMessage extends ChatMessage {
+  /** Web pages the meeple cited in this reply. */
+  sources?: MeepleSource[];
+  /** Accept/reject state of each proposed action, by index. */
+  actionStatuses?: Record<number, 'accepted' | 'rejected'>;
+}
+
+export interface Meeple {
+  id: string;
+  name: string;
+  /** Short job title shown in the list, e.g. "Web scout". */
+  role: string;
+  /** Standing brief: what this meeple is in charge of and how it should work. */
+  instructions: string;
+  icon: string; // FontAwesome glyph name
+  glow: 'apricot' | 'rose' | 'plum' | 'ocean' | 'sky' | 'lime';
+  /** May search and read the web. */
+  webSearch: boolean;
+  /** Sees today's schedule and open tasks, and may propose new tasks/events. */
+  scheduleAccess: boolean;
+  messages: MeepleMessage[];
+  unread: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}

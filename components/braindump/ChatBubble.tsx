@@ -13,6 +13,8 @@ interface ChatBubbleProps {
   speakingMessageId?: string | null;
   onSpeakStart?: (id: string) => void;
   onSpeakEnd?: () => void;
+  /** Who the assistant side is, for screen readers. Defaults to the companion. */
+  senderName?: string;
 }
 
 export default function ChatBubble({
@@ -20,6 +22,7 @@ export default function ChatBubble({
   speakingMessageId,
   onSpeakStart,
   onSpeakEnd,
+  senderName,
 }: ChatBubbleProps) {
   const { theme } = useThemeStore();
   const { aiPersona, ttsEnabled, ttsVoice, voiceLocale, companionName } = useSettingsStore();
@@ -91,7 +94,7 @@ export default function ChatBubble({
       >
         {/* Sender + time + message read as one element; the timestamp below is hidden to avoid repeating it */}
         <Text
-          accessibilityLabel={`${isUser ? 'You' : companionName || 'Meep'}, ${timeLabel}: ${message.content}`}
+          accessibilityLabel={`${isUser ? 'You' : senderName || companionName || 'Meep'}, ${timeLabel}: ${message.content}`}
           style={[
             styles.text,
             { color: isUser ? theme.colors.onPrimary : theme.colors.text },
