@@ -29,3 +29,8 @@
   or `ios.appleTeamId` in `app.json`; Simulator builds don't. Free Personal Teams can't use App Groups.
 - Xcode 27 rejects iOS deployment targets below 15; `plugins/withMinPodsDeploymentTarget.js` bumps pods on prebuild.
 - Apple Sign-In is feature-flagged off by default via `EXPO_PUBLIC_ENABLE_APPLE_SIGN_IN=false`.
+- `@expo/ui` is pinned to `0.2.0-beta.9` (the SDK 54 build): `~0.2.0-beta.9` also matches newer
+  `0.2.0-canary-*` builds that don't compile against SDK 54. Its SwiftUI `Text`/`Button` labels render
+  blank on iOS 27, so only icon-only SwiftUI views are used; text buttons are RN text over `GlassView`.
+- `npx expo run:ios` can't find the Simulator app under Xcode 27; build with `xcodebuild -sdk iphonesimulator`
+  and install with `xcrun simctl install`.

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { addDays, startOfDay } from 'date-fns';
@@ -7,10 +8,12 @@ import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useMeepleStore } from '@/stores/meepleStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { usePatternStore } from '@/stores/patternStore';
 import { parseBrainDump, sendChatCorrection, sendChatMessage } from '@/lib/ai';
 import { confirmAndSaveItem, confirmAndSaveAll } from '@/lib/confirmItems';
+import { applyChatAction } from '@/lib/chatActions';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import { autoScheduleTasks } from '@/lib/scheduler';
 import { collectTaskPattern } from '@/lib/patternLearning';
@@ -27,6 +30,8 @@ import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
 import ScreenHeader, { GlowAvatar } from '@/components/ui/ScreenHeader';
 import IconButton from '@/components/ui/IconButton';
 import { useSurfaceStyle } from '@/components/ui/surface';
+import { SurfaceGlass } from '@/components/common/GlassCard';
+import { useNativeGlass } from '@/lib/glass';
 import { decorative } from '@/lib/accessibility';
 import type { ParsedItem, ChatMessage, ChatAction, ScheduleResult, CalendarEvent } from '@/types';
 
@@ -34,8 +39,11 @@ type ScreenMode = 'input' | 'review' | 'chat';
 
 export default function MeepScreen() {
   const { theme } = useThemeStore();
+  const router = useRouter();
+  const meeplesUnread = useMeepleStore((s) => s.meeples.filter((m) => m.unread).length);
   const tabClearance = useTabBarClearance();
   const surface = useSurfaceStyle('strong');
+  const nativeGlass = useNativeGlass();
   const {
     messages, currentParsedItems, isProcessing,
     addMessage, setParsedItems, updateParsedItem, removeParsedItem,
@@ -273,7 +281,13 @@ export default function MeepScreen() {
     setScreenMode('input');
   };
 
-  const handleChatSend = async (text: string) => {
+  // "Ask" on the main composer: opens a fresh conversation with the question already sent.
+  const handleAsk = (text: string) => {
+    handleStartChat();
+    handleChatSend(text, []);
+  };
+
+  const handleChatSend = async (text: string, history: ChatMessage[] = messages) => {
     stopSpeaking();
     setSpeakingMessageId(null);
 
@@ -288,7 +302,7 @@ export default function MeepScreen() {
 
     try {
       const result = await sendChatMessage(
-        [...messages, userMsg],
+        [...history, userMsg],
         aiPersona,
         companionName,
         timezone
@@ -327,50 +341,7 @@ export default function MeepScreen() {
     const key = `${messageId}-${actionIndex}`;
     setActionStatuses((prev) => ({ ...prev, [key]: 'accepted' }));
 
-    const now = new Date();
-    switch (action.type) {
-      case 'create_event': {
-        useCalendarStore.getState().addEvent({
-          id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
-          title: action.params.title,
-          startTime: new Date(action.params.startTime),
-          endTime: new Date(action.params.endTime),
-          description: action.params.description,
-          allDay: action.params.allDay ?? false,
-          color: action.params.color ?? '#2563EB',
-          source: 'local',
-          createdAt: now,
-          updatedAt: now,
-        });
-        break;
-      }
-      case 'move_event':
-        useCalendarStore.getState().updateEvent(action.params.eventId, {
-          startTime: new Date(action.params.newStartTime),
-          endTime: new Date(action.params.newEndTime),
-        });
-        break;
-      case 'delete_event':
-        useCalendarStore.getState().deleteEvent(action.params.eventId);
-        break;
-      case 'complete_task':
-        useTaskStore.getState().toggleStatus(action.params.taskId);
-        break;
-      case 'create_task': {
-        useTaskStore.getState().addTask({
-          id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
-          title: action.params.title,
-          priority: action.params.priority ?? 3,
-          status: 'todo',
-          description: action.params.description,
-          dueDate: action.params.dueDate ? new Date(action.params.dueDate) : undefined,
-          estimatedMinutes: action.params.estimatedMinutes,
-          createdAt: now,
-          updatedAt: now,
-        });
-        break;
-      }
-    }
+    applyChatAction(action);
   }, []);
 
   const handleActionReject = useCallback((action: ChatAction, messageId: string, actionIndex: number) => {
@@ -380,9 +351,10 @@ export default function MeepScreen() {
 
   return (
     <GlassBackground style={styles.container}>
-    {/* Bottom padding keeps the inputs above the floating tab bar */}
+    {/* Keeps the inputs above the tab bar. Margin, not padding: KeyboardAvoidingView
+        overwrites paddingBottom with the keyboard height. */}
     <KeyboardAvoidingView
-      style={[styles.container, { paddingBottom: tabClearance }]}
+      style={[styles.container, { marginBottom: tabClearance }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
     >
@@ -426,15 +398,23 @@ export default function MeepScreen() {
           left={<Text style={[styles.brand, { color: theme.colors.textSecondary }]}>{companionName.toLowerCase()}</Text>}
           right={
             <Pressable
-              testID="chat-button"
+              testID="meeples-button"
               accessibilityRole="button"
-              accessibilityLabel={`Chat with ${companionName}`}
-              accessibilityHint="Ask about your schedule, tasks, or anything else"
-              onPress={handleStartChat}
-              style={({ pressed }) => [styles.chatPill, surface, pressed && { opacity: 0.75 }]}
+              accessibilityLabel={meeplesUnread ? `Meeples, ${meeplesUnread} with new replies` : 'Meeples'}
+              accessibilityHint="Your agents: give them tasks and check in on them"
+              onPress={() => router.push('/meeples')}
+              style={({ pressed }) => [
+                styles.chatPill,
+                surface,
+                pressed && (nativeGlass ? { transform: [{ scale: 0.95 }] } : { opacity: 0.75 }),
+              ]}
             >
-              <FontAwesome name="comment-o" size={15} color={theme.colors.text} {...decorative} />
-              <Text style={[styles.chatPillText, { color: theme.colors.text }]}>Chat</Text>
+              <SurfaceGlass radius={22} />
+              <FontAwesome name="users" size={14} color={theme.colors.text} {...decorative} />
+              <Text style={[styles.chatPillText, { color: theme.colors.text }]}>Meeples</Text>
+              {meeplesUnread > 0 && (
+                <View style={[styles.unreadDot, { backgroundColor: theme.colors.accent }]} {...decorative} />
+              )}
             </Pressable>
           }
         />
@@ -447,7 +427,7 @@ export default function MeepScreen() {
             What can I take off your mind today?
           </Text>
           <View style={styles.flex} />
-          <BrainDumpInput onSubmit={handleBrainDump} isProcessing={isProcessing} />
+          <BrainDumpInput onSubmit={handleBrainDump} onAsk={handleAsk} isProcessing={isProcessing} />
         </View>
       ) : screenMode === 'chat' ? (
         <View style={styles.reviewContainer}>
@@ -496,7 +476,7 @@ export default function MeepScreen() {
           </ScrollView>
 
           <ChatInput
-            onSend={handleChatSend}
+            onSend={(text) => handleChatSend(text)}
             disabled={isProcessing}
             placeholder={`Chat with ${companionName}...`}
           />
@@ -632,6 +612,11 @@ const styles = StyleSheet.create({
   chatPillText: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   reviewContainer: {
     flex: 1,

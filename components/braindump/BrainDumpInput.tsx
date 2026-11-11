@@ -8,17 +8,27 @@ import { a11yState } from '@/lib/accessibility';
 import VoiceInput from '@/components/braindump/VoiceInput';
 import PillTabs from '@/components/ui/PillTabs';
 import { useSurfaceStyle } from '@/components/ui/surface';
+import { SurfaceGlass } from '@/components/common/GlassCard';
 
 interface BrainDumpInputProps {
   onSubmit: (text: string) => void;
+  /** When set, adds an "Ask" mode that sends the text as a question instead of parsing it. */
+  onAsk?: (text: string) => void;
   isProcessing: boolean;
 }
 
-export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInputProps) {
+type Mode = 'dump' | 'quick' | 'ask';
+
+export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainDumpInputProps) {
   const { theme } = useThemeStore();
   const surface = useSurfaceStyle('strong');
   const [text, setText] = useState('');
-  const [quickMode, setQuickMode] = useState(false);
+  const [mode, setMode] = useState<Mode>('dump');
+  const quickMode = mode === 'quick';
+  const askMode = mode === 'ask';
+  // Quick add and Ask are one-liners that send on return
+  const oneLine = quickMode || askMode;
+  const send = (value: string) => (askMode && onAsk ? onAsk(value) : onSubmit(value));
   // Captures whatever was typed before voice started so we can prepend it correctly
   const textBeforeVoice = useRef('');
   const voiceSessionActive = useRef(false);
@@ -30,19 +40,19 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
 
   const handleSubmit = () => {
     if (!text.trim() || isProcessing) return;
-    onSubmit(text.trim());
+    send(text.trim());
   };
 
   const handleTranscription = (transcript: string) => {
     const prefix = textBeforeVoice.current;
-    const updated = quickMode
+    const updated = oneLine
       ? transcript
       : prefix ? `${prefix}\n${transcript}` : transcript;
     setText(updated);
     textBeforeVoice.current = '';
     voiceSessionActive.current = false;
-    if (quickMode) {
-      onSubmit(updated.trim());
+    if (oneLine) {
+      send(updated.trim());
     }
   };
 
@@ -65,9 +75,10 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
         options={[
           { value: 'dump', label: 'Brain dump' },
           { value: 'quick', label: 'Quick add' },
+          ...(onAsk ? [{ value: 'ask' as const, label: 'Ask' }] : []),
         ]}
-        value={quickMode ? 'quick' : 'dump'}
-        onChange={(v) => setQuickMode(v === 'quick')}
+        value={mode}
+        onChange={setMode}
         accessibilityLabel="Input mode"
         style={styles.modes}
       />
@@ -75,21 +86,24 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
       {/* Composer: a pill field with the send button inside, mic alongside */}
       <View style={styles.composerRow}>
         <View style={[styles.field, surface]}>
+          <SurfaceGlass radius={FIELD / 2} />
           <TextInput
             style={[styles.input, { color: theme.colors.text }]}
-            placeholder={quickMode ? 'Add: dentist at 3pm tomorrow' : 'Dump it all here…'}
+            placeholder={askMode ? 'Ask about your day…' : quickMode ? 'Add: dentist at 3pm tomorrow' : 'Dump it all here…'}
             placeholderTextColor={theme.colors.textTertiary}
-            accessibilityLabel={quickMode ? 'Quick add' : 'Brain dump'}
+            accessibilityLabel={askMode ? 'Ask' : quickMode ? 'Quick add' : 'Brain dump'}
             accessibilityHint={
-              quickMode
+              askMode
+                ? 'Ask about your schedule, tasks, or anything else'
+                : quickMode
                 ? 'Describe one item, for example dentist at 3pm tomorrow'
                 : 'Type everything on your mind, one thing per line'
             }
-            returnKeyType={quickMode ? 'done' : 'default'}
-            onSubmitEditing={quickMode ? handleSubmit : undefined}
+            returnKeyType={askMode ? 'send' : quickMode ? 'done' : 'default'}
+            onSubmitEditing={oneLine ? handleSubmit : undefined}
             value={text}
             onChangeText={setText}
-            multiline={!quickMode}
+            multiline={!oneLine}
             numberOfLines={1}
             textAlignVertical="center"
           />
@@ -97,7 +111,7 @@ export default function BrainDumpInput({ onSubmit, isProcessing }: BrainDumpInpu
             onPress={handleSubmit}
             disabled={!canSubmit}
             accessibilityRole="button"
-            accessibilityLabel={quickMode ? 'Add' : 'Process brain dump'}
+            accessibilityLabel={askMode ? 'Ask' : quickMode ? 'Add' : 'Process brain dump'}
             {...a11yState({ disabled: !canSubmit, busy: isProcessing })}
             style={({ pressed }) => [
               styles.send,

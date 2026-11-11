@@ -1,19 +1,21 @@
 import { Platform, type ViewStyle } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSolidSurfaces } from '@/lib/accessibility';
-import { rimShadow } from '@/lib/glass';
+import { rimShadow, useNativeGlass } from '@/lib/glass';
 
 /**
  * Background/border style for ordinary rows, chips and buttons built from a
  * plain View/Pressable (for big hero surfaces use <Card>/<GlassCard>).
  *  - Glass, web: real frosted glass via backdrop-filter.
- *  - Glass, native: a tinted translucent fill (a BlurView can't be a style).
+ *  - Glass, iOS 26+: transparent — render <SurfaceGlass> as the first child for real Liquid Glass.
+ *  - Glass, older native: a tinted translucent fill (a BlurView can't be a style).
  *  - Solid surfaces (Reduce Transparency / Increase Contrast / in-app): opaque.
  *  - Afterglow: matte.
  */
 export function useSurfaceStyle(emphasis: 'default' | 'strong' = 'default'): ViewStyle {
   const { theme } = useThemeStore();
   const solid = useSolidSurfaces();
+  const native = useNativeGlass();
 
   if (solid) {
     return { backgroundColor: theme.colors.surfaceOpaque, borderWidth: 1, borderColor: theme.colors.border };
@@ -26,6 +28,8 @@ export function useSurfaceStyle(emphasis: 'default' | 'strong' = 'default'): Vie
       borderColor: theme.colors.border,
     };
   }
+
+  if (native) return {};
 
   if (Platform.OS === 'web') {
     const backdrop = `blur(${emphasis === 'strong' ? 18 : 14}px) saturate(1.6)`;
