@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSurfaceStyle } from './surface';
+import { useNativeGlass } from '@/lib/glass';
+import { SurfaceGlass } from '@/components/common/GlassCard';
 
 import { a11yState } from '@/lib/accessibility';
 export interface PillOption<T extends string> {
@@ -39,6 +41,7 @@ export default function PillTabs<T extends string>({
   const radio = semantics === 'radio';
   const { theme } = useThemeStore();
   const surface = useSurfaceStyle();
+  const glass = useNativeGlass();
 
   return (
     <View
@@ -65,9 +68,10 @@ export default function PillTabs<T extends string>({
               selected
                 ? { backgroundColor: theme.colors.primary, borderWidth: 1, borderColor: theme.colors.primary }
                 : surface,
-              pressed && !selected && { opacity: 0.7 },
+              pressed && !selected && (glass ? { transform: [{ scale: 0.96 }] } : { opacity: 0.7 }),
             ]}
           >
+            {!selected && <SurfaceGlass radius={PILL_HEIGHT / 2} />}
             {option.count != null && (
               <View
                 style={[

@@ -8,6 +8,7 @@ import {
   type StyleProp,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { GlassView } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '@/stores/themeStore';
 import {
@@ -15,6 +16,8 @@ import {
   webBackdrop,
   rimShadow,
   ensureLiquidGlassFilter,
+  hasNativeGlass,
+  useNativeGlass,
   type GlassPreset,
 } from '@/lib/glass';
 import { useSolidSurfaces, decorative } from '@/lib/accessibility';
@@ -22,8 +25,12 @@ import type { GlassStyle } from '@/types';
 
 const isWeb = Platform.OS === 'web';
 
-/** Rounded frame for a glass surface: clips the layers and draws the edge highlight. */
+/**
+ * Rounded frame for a glass surface: clips the layers and draws the edge highlight.
+ * On iOS 26+ the system glass draws its own edge and shadow, so only the shape is set.
+ */
 export function glassFrame(preset: GlassPreset, radius: number): ViewStyle {
+  if (hasNativeGlass()) return { borderRadius: radius };
   return {
     borderRadius: radius,
     overflow: 'hidden',
@@ -36,6 +43,34 @@ export function glassFrame(preset: GlassPreset, radius: number): ViewStyle {
 }
 
 /**
+ * Apple's real Liquid Glass (iOS 26+), filling its parent. Renders nothing when
+ * system glass is unavailable or surfaces should be solid, so callers can drop it in
+ * unconditionally. Avoid opacity < 1 on its ancestors — UIGlassEffect stops rendering.
+ */
+export function NativeGlass({
+  preset,
+  radius = 0,
+  style,
+}: {
+  preset: GlassPreset;
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { theme } = useThemeStore();
+  if (!useNativeGlass()) return null;
+  return (
+    <GlassView
+      glassEffectStyle={preset.nativeGlass}
+      tintColor={preset.nativeTint}
+      colorScheme={theme.appearance}
+      style={[StyleSheet.absoluteFill, { borderRadius: radius }, style]}
+      pointerEvents="none"
+      {...decorative}
+    />
+  );
+}
+
+/**
  * The stacked glass material. Render as the first children of a glassFrame view.
  * `radius` must match the frame's: on web, backdrop-filter ignores the parent's
  * rounded overflow clipping, so each layer carries its own corner radius.
@@ -44,6 +79,7 @@ export function glassFrame(preset: GlassPreset, radius: number): ViewStyle {
 export function GlassLayers({ preset, radius = 0 }: { preset: GlassPreset; radius?: number }) {
   const { theme } = useThemeStore();
   const solid = useSolidSurfaces();
+  const native = useNativeGlass();
 
   useEffect(() => {
     if (preset.refract && !solid) ensureLiquidGlassFilter();
@@ -60,6 +96,8 @@ export function GlassLayers({ preset, radius = 0 }: { preset: GlassPreset; radiu
       />
     );
   }
+
+  if (native) return <NativeGlass preset={preset} radius={radius} />;
 
   const backdrop = webBackdrop(preset);
 
@@ -95,6 +133,11 @@ export function GlassLayers({ preset, radius = 0 }: { preset: GlassPreset; radiu
       <View style={[StyleSheet.absoluteFill, rounded, { boxShadow: rimShadow(preset.rim) }]} />
     </View>
   );
+}
+
+/** Real glass behind a plain row/chip/button styled with useSurfaceStyle (iOS 26+ only). */
+export function SurfaceGlass({ radius }: { radius: number }) {
+  return <NativeGlass preset={useGlassPreset()} radius={radius} />;
 }
 
 interface Props extends ViewProps {

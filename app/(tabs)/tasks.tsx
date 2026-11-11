@@ -23,12 +23,15 @@ import PillTabs from '@/components/ui/PillTabs';
 import ScreenHeader, { GlowAvatar } from '@/components/ui/ScreenHeader';
 import { DisplayTitle, SectionLabel } from '@/components/ui/Typography';
 import { decorative, hitSlopFor } from '@/lib/accessibility';
+import { useNativeGlass } from '@/lib/glass';
+import PrimaryGlassButton from '@/components/ui/PrimaryGlassButton';
 import type { Task, ScheduleResult, CalendarEvent } from '@/types';
 
 type Filter = 'all' | 'todo' | 'done';
 
 export default function TasksScreen() {
   const { theme } = useThemeStore();
+  const nativeGlass = useNativeGlass();
   const tabClearance = useTabBarClearance();
   const { filter, setFilter, getFilteredTasks } = useTaskStore();
   const allTasks = useTaskStore((s) => s.tasks);
@@ -218,19 +221,27 @@ export default function TasksScreen() {
                 : "Move them to today so they don't get lost?"}
             </Text>
           </View>
-          <Pressable
-            onPress={handleCarryOver}
-            accessibilityRole="button"
-            accessibilityLabel={`Move ${carryOverCandidates.length} unfinished ${carryOverCandidates.length === 1 ? 'task' : 'tasks'} to today`}
-            hitSlop={hitSlopFor(36)}
-            style={({ pressed }) => [
-              styles.moveButton,
-              { backgroundColor: theme.colors.primary },
-              pressed && { opacity: 0.8 },
-            ]}
-          >
-            <Text style={[styles.moveButtonText, { color: theme.colors.onPrimary }]}>Move</Text>
-          </Pressable>
+          {nativeGlass ? (
+            <PrimaryGlassButton
+              label="Move"
+              accessibilityLabel={`Move ${carryOverCandidates.length} unfinished ${carryOverCandidates.length === 1 ? 'task' : 'tasks'} to today`}
+              onPress={handleCarryOver}
+            />
+          ) : (
+            <Pressable
+              onPress={handleCarryOver}
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${carryOverCandidates.length} unfinished ${carryOverCandidates.length === 1 ? 'task' : 'tasks'} to today`}
+              hitSlop={hitSlopFor(36)}
+              style={({ pressed }) => [
+                styles.moveButton,
+                { backgroundColor: theme.colors.primary },
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <Text style={[styles.moveButtonText, { color: theme.colors.onPrimary }]}>Move</Text>
+            </Pressable>
+          )}
           <IconButton
             icon="times"
             iconSize={14}

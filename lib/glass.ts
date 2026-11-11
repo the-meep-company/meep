@@ -1,6 +1,9 @@
 import { Platform } from 'react-native';
 import type { BlurTint } from 'expo-blur';
+import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useThemeStore } from '@/stores/themeStore';
+import { useSolidSurfaces } from '@/lib/accessibility';
 import type { GlassStyle } from '@/types';
 
 // Glass materials. Each surface is layered: blur → fill → glossy top sheen →
@@ -10,12 +13,19 @@ import type { GlassStyle } from '@/types';
 // Web draws the blur itself with backdrop-filter so it can also *refract*:
 // `refract` runs the backdrop through an SVG displacement map that bends the
 // background near the edges (the Liquid Glass lens effect — same technique as
-// anniefang.co's nav). Native uses the system blur (expo-blur) instead.
+// anniefang.co's nav).
+//
+// iOS 26+ renders Apple's real Liquid Glass (UIGlassEffect via expo-glass-effect),
+// which does its own lensing, rim light and adaptive tint — none of the fake
+// layers are drawn there. Older iOS and Android fall back to expo-blur.
 
 export interface GlassPreset {
   label: string;
   subtitle: string;
-  // Native (expo-blur)
+  // iOS 26+ (UIGlassEffect)
+  nativeGlass: 'clear' | 'regular';
+  nativeTint?: string;
+  // Native fallback (expo-blur)
   intensity: number;
   tint: BlurTint;
   // Web (backdrop-filter)
@@ -36,6 +46,7 @@ export const GLASS_PRESETS: Record<GlassStyle, GlassPreset> = {
   clear: {
     label: 'Clear',
     subtitle: 'Lightest',
+    nativeGlass: 'clear',
     intensity: 12,
     tint: 'systemUltraThinMaterialDark',
     webBlur: 2,
@@ -51,6 +62,7 @@ export const GLASS_PRESETS: Record<GlassStyle, GlassPreset> = {
   frosted: {
     label: 'Frosted',
     subtitle: 'Balanced',
+    nativeGlass: 'regular',
     intensity: 55,
     tint: 'systemThinMaterialDark',
     webBlur: 14,
@@ -66,6 +78,8 @@ export const GLASS_PRESETS: Record<GlassStyle, GlassPreset> = {
   blur: {
     label: 'Blur',
     subtitle: 'Most frosted',
+    nativeGlass: 'regular',
+    nativeTint: 'rgba(0,0,0,0.25)',
     intensity: 100,
     tint: 'systemMaterialDark',
     webBlur: 26,
@@ -87,6 +101,7 @@ export const NAV_GLASS: Record<'dark' | 'light', GlassPreset> = {
   dark: {
     label: 'Nav',
     subtitle: '',
+    nativeGlass: 'regular',
     intensity: 40,
     tint: 'systemUltraThinMaterialDark',
     webBlur: 6,
@@ -102,6 +117,7 @@ export const NAV_GLASS: Record<'dark' | 'light', GlassPreset> = {
   light: {
     label: 'Nav',
     subtitle: '',
+    nativeGlass: 'regular',
     intensity: 40,
     tint: 'systemUltraThinMaterialLight',
     webBlur: 4,
@@ -115,6 +131,24 @@ export const NAV_GLASS: Record<'dark' | 'light', GlassPreset> = {
     sheen: ['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)'],
   },
 };
+
+let nativeGlassSupported: boolean | undefined;
+
+/** True on iOS 26+, where the system's real Liquid Glass material is available. */
+export function hasNativeGlass(): boolean {
+  if (nativeGlassSupported === undefined) {
+    nativeGlassSupported =
+      Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+  }
+  return nativeGlassSupported;
+}
+
+/** True when glass surfaces should render as real system Liquid Glass right now. */
+export function useNativeGlass(): boolean {
+  const isGlass = useThemeStore((s) => s.theme.isGlass);
+  const solid = useSolidSurfaces();
+  return isGlass && !solid && hasNativeGlass();
+}
 
 /** The user's chosen glass preset, or an explicit override (e.g. for previews). */
 export function useGlassPreset(override?: GlassStyle): GlassPreset {
