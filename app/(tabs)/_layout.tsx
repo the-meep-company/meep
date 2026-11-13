@@ -4,6 +4,8 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import FloatingTabBar from '@/components/navigation/FloatingTabBar';
+import WebSidebar from '@/components/navigation/WebSidebar';
+import { useWideLayout } from '@/lib/layout';
 import { useThemeStore } from '@/stores/themeStore';
 
 function TabBarIcon(props: {
@@ -43,13 +45,15 @@ function NativeTabLayout() {
 }
 
 export default function TabLayout() {
+  const wide = useWideLayout();
   if (Platform.OS === 'ios') return <NativeTabLayout />;
 
   return (
     <Tabs
-      // Floating Liquid Glass pill; it overlays the screens so content scrolls under it.
-      tabBar={(props) => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+      // Desktop web: a left sidebar. Otherwise a floating Liquid Glass pill that
+      // overlays the screens so content scrolls under it.
+      tabBar={(props) => (wide ? <WebSidebar {...props} /> : <FloatingTabBar {...props} />)}
+      screenOptions={{ headerShown: false, tabBarPosition: wide ? 'left' : 'bottom' }}
     >
       <Tabs.Screen
         name="calendar"

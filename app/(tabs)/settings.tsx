@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -106,6 +107,11 @@ export default function SettingsScreen() {
     : 'Not connected';
 
   const handleSignOut = () => {
+    // react-native-web's Alert is a no-op, so the browser's own dialog confirms there.
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to sign out?')) signOut();
+      return;
+    }
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
@@ -115,7 +121,7 @@ export default function SettingsScreen() {
   const section = (label: string) => <SectionLabel style={styles.section}>{label}</SectionLabel>;
 
   return (
-    <GlassBackground style={styles.container}>
+    <GlassBackground style={styles.container} centered>
       <ScreenHeader />
       <ScrollView
         style={styles.scroll}
@@ -133,8 +139,11 @@ export default function SettingsScreen() {
           ) : (
             <SettingsRow kind="info" title="Guest mode" description="Sign in to sync your data across devices" />
           )}
-          {user && (
+          {user ? (
             <SettingsRow kind="button" title="Sign out" tone={theme.colors.error} chevron={false} onPress={handleSignOut} />
+          ) : (
+            // Leaving guest mode returns to the login screen; local data stays on the device.
+            <SettingsRow kind="button" title="Sign in" onPress={() => signOut()} />
           )}
         </SettingsGroup>
 
@@ -480,11 +489,16 @@ export default function SettingsScreen() {
           />
         </SettingsGroup>
 
-        {section('Widget')}
-        <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-          Choose what appears on your home screen widget.
-        </Text>
-        <WidgetSettingsSection />
+        {/* Home screen widgets only exist in the native app. */}
+        {Platform.OS !== 'web' && (
+          <>
+            {section('Widget')}
+            <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
+              Choose what appears on your home screen widget.
+            </Text>
+            <WidgetSettingsSection />
+          </>
+        )}
 
         {section('Integrations')}
         <SettingsGroup>

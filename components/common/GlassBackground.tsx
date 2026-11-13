@@ -14,6 +14,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getBackgroundPreset, CUSTOM_PHOTO_SCRIM, type MeshBlob } from '@/lib/backgrounds';
 import { decorative } from '@/lib/accessibility';
+import { useWideLayout, CONTENT_MAX_WIDTH } from '@/lib/layout';
 import type { GrainLevel } from '@/types';
 
 const GRAIN = require('@/assets/images/grain.png');
@@ -85,6 +86,8 @@ export function GrainOverlay({ level }: { level: GrainLevel }) {
 interface Props {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Desktop web: keep the content in a centered column (the background stays full-bleed). */
+  centered?: boolean;
 }
 
 /**
@@ -92,9 +95,10 @@ interface Props {
  *  - Glass themes: the user's wallpaper or photo, a readability scrim, grain.
  *  - Themes with a backdrop (Afterglow): soft ambient glows plus grain.
  */
-export default function GlassBackground({ children, style }: Props) {
+export default function GlassBackground({ children, style, centered }: Props) {
   const { theme } = useThemeStore();
   const { glassBackground, customBackgroundUri, grain } = useSettingsStore();
+  const wide = useWideLayout();
 
   let layers: React.ReactNode = null;
 
@@ -133,13 +137,14 @@ export default function GlassBackground({ children, style }: Props) {
     <View role="main" style={[styles.fill, { backgroundColor: theme.colors.background }, style]}>
       {layers}
       {(theme.isGlass || theme.backdrop) && <GrainOverlay level={grain} />}
-      {children}
+      {centered && wide ? <View style={styles.column}>{children}</View> : children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  column: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' },
   layer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
   blob: { position: 'absolute', aspectRatio: 1, borderRadius: 9999 },
 });
