@@ -3,6 +3,9 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GoogleCalendarInfo, SyncState } from '@/types';
 
+// A cache of the user's google_calendars rows. The server owns them; the
+// toggles here are optimistic and lib/googleCalendar.ts writes them through.
+
 interface SyncStoreState {
   googleCalendars: GoogleCalendarInfo[];
   syncState: SyncState;
@@ -11,11 +14,14 @@ interface SyncStoreState {
   // Actions
   setGoogleCalendars: (calendars: GoogleCalendarInfo[]) => void;
   toggleCalendarSync: (id: string) => void;
+  toggleBotsCanWrite: (id: string) => void;
   setSyncing: (v: boolean) => void;
   setSyncError: (err: string | null) => void;
   setLastSync: (date: Date) => void;
   clearSync: () => void; // called on disconnect
 }
+
+const selectedIds = (calendars: GoogleCalendarInfo[]) => calendars.filter((c) => c.selected).map((c) => c.id);
 
 export const useSyncStore = create<SyncStoreState>()(
   persist(
@@ -28,26 +34,27 @@ export const useSyncStore = create<SyncStoreState>()(
       },
       selectedCalendarIds: [],
 
-      setGoogleCalendars: (calendars) => {
-        // On first load, auto-select the primary calendar
-        const currentSelected = get().selectedCalendarIds;
-        const newSelected =
-          currentSelected.length === 0
-            ? calendars.filter((c) => c.primary).map((c) => c.id)
-            : currentSelected;
-        set({ googleCalendars: calendars, selectedCalendarIds: newSelected });
-      },
+      setGoogleCalendars: (calendars) =>
+        set({ googleCalendars: calendars, selectedCalendarIds: selectedIds(calendars) }),
 
       toggleCalendarSync: (id) => {
-        const { selectedCalendarIds } = get();
-        const next = selectedCalendarIds.includes(id)
-          ? selectedCalendarIds.filter((s) => s !== id)
-          : [...selectedCalendarIds, id];
-        set({ selectedCalendarIds: next });
+        const calendars = get().googleCalendars.map((c) => (c.id === id ? { ...c, selected: !c.selected } : c));
+        set({ googleCalendars: calendars, selectedCalendarIds: selectedIds(calendars) });
+        const cal = calendars.find((c) => c.id === id);
+        const { setCalendarSelected } = require('@/lib/googleCalendar');
+        if (cal) setCalendarSelected(id, cal.selected).catch((e: Error) => get().setSyncError(e.message));
+      },
+
+      toggleBotsCanWrite: (id) => {
+        const calendars = get().googleCalendars.map((c) => (c.id === id ? { ...c, botsCanWrite: !c.botsCanWrite } : c));
+        set({ googleCalendars: calendars });
+        const cal = calendars.find((c) => c.id === id);
+        const { setCalendarBotsCanWrite } = require('@/lib/googleCalendar');
+        if (cal) setCalendarBotsCanWrite(id, cal.botsCanWrite).catch((e: Error) => get().setSyncError(e.message));
       },
 
       setSyncing: (v) =>
-        set((state) => ({ syncState: { ...state.syncState, isSyncing: v } })),
+        set((state) => ({ syncState: { ...state.syncState, isSyncing: v, syncError: v ? null : state.syncState.syncError } })),
 
       setSyncError: (err) =>
         set((state) => ({ syncState: { ...state.syncState, syncError: err } })),

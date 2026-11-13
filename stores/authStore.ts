@@ -2,13 +2,16 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { syncAll, pushSettings } from '@/lib/sync';
+import { connectGoogle, loadGoogleCalendars } from '@/lib/googleCalendar';
+import { subscribeToChanges, unsubscribeFromChanges } from '@/lib/realtime';
 import { useCalendarStore } from './calendarStore';
 import { useTaskStore } from './taskStore';
 import { useHabitStore } from './habitStore';
 import { useGoalStore } from './goalStore';
 import { useSettingsStore } from './settingsStore';
 import { useThemeStore } from './themeStore';
-import { Platform } from 'react-native';
+import { useMeepleStore } from './meepleStore';
+import { AppState, Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -16,7 +19,11 @@ import * as Crypto from 'expo-crypto';
 import type { User, Session } from '@supabase/supabase-js';
 import type { AIPersona } from '@/types';
 
-const GOOGLE_TOKEN_KEY = 'meep_google_token';
+// The short-lived Google access token the app used to keep; Google now lives on
+// the server, so this is only cleared on sign-out.
+const LEGACY_GOOGLE_TOKEN_KEY = 'meep_google_token';
+// Pull again when the app returns to the foreground, at most this often.
+const FOREGROUND_SYNC_MS = 30_000;
 const ENABLE_APPLE_SIGN_IN = process.env.EXPO_PUBLIC_ENABLE_APPLE_SIGN_IN === 'true';
 
 // Only needed for the native popup OAuth flow — on web the browser handles session
@@ -28,7 +35,6 @@ if (Platform.OS !== 'web') {
 interface AuthState {
   user: User | null;
   session: Session | null;
-  googleToken: string | null;
   isLoading: boolean;
   isGuest: boolean;
 
@@ -46,7 +52,6 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   session: null,
-  googleToken: null,
   isLoading: true,
   isGuest: false,
 
@@ -54,44 +59,38 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // provider_token is only present right after OAuth sign-in, not on
-        // session restore. Fall back to our persisted copy.
-        const freshProviderToken = session.provider_token ?? null;
-        const storedToken = await AsyncStorage.getItem(GOOGLE_TOKEN_KEY);
-        const googleToken = freshProviderToken ?? storedToken;
-
-        if (freshProviderToken) {
-          // Persist the fresh token so it survives reloads
-          await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, freshProviderToken);
-        }
-
-        set({ user: session.user, session, googleToken, isLoading: false });
+        set({ user: session.user, session, isLoading: false });
         // Sync data on app launch if logged in
         performSync(session.user.id);
+        subscribeToChanges(session.user.id);
       } else {
         set({ isLoading: false });
       }
 
       // Listen for auth changes
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      supabase.auth.onAuthStateChange((_event, session) => {
         const prev = get().user;
-        const freshProviderToken = session?.provider_token ?? null;
+        set({ user: session?.user ?? null, session: session ?? null });
 
-        // Persist new provider token when available (fresh OAuth sign-in)
-        if (freshProviderToken) {
-          await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, freshProviderToken);
-        }
+        // provider_refresh_token is only present right after a Google OAuth sign-in
+        // (the web redirect flow lands here); the server keeps it from then on.
+        const refreshToken = session?.provider_refresh_token;
+        if (refreshToken) connectGoogle(refreshToken).catch((e) => console.warn('[google] connect failed:', e));
 
-        set({
-          user: session?.user ?? null,
-          session: session ?? null,
-          // Keep existing googleToken if provider_token isn't in this event
-          googleToken: freshProviderToken ?? get().googleToken,
-        });
         // Sync when user signs in (not on token refresh)
         if (session?.user && !prev) {
           performSync(session.user.id);
+          subscribeToChanges(session.user.id);
         }
+      });
+
+      // Bots and Google sync change data while the app is in the background.
+      let lastForegroundSync = Date.now();
+      AppState.addEventListener('change', (state) => {
+        const user = get().user;
+        if (state !== 'active' || !user || Date.now() - lastForegroundSync < FOREGROUND_SYNC_MS) return;
+        lastForegroundSync = Date.now();
+        performSync(user.id);
       });
     } catch {
       set({ isLoading: false });
@@ -100,6 +99,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   signInWithGoogle: async () => {
     const scopes = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events';
+    // Offline access + consent makes Google return a refresh token every time,
+    // which the server stores so Google sync and bots work while the app is closed.
+    const queryParams = { access_type: 'offline', prompt: 'consent' };
 
     if (Platform.OS === 'web') {
       // Web: full-page redirect — Supabase detects the session from the URL hash on return
@@ -108,10 +110,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         options: {
           redirectTo: window.location.origin,
           scopes,
+          queryParams,
         },
       });
       if (error) throw error;
-      // Browser redirects away; onAuthStateChange fires on return and sets googleToken
+      // Browser redirects away; onAuthStateChange fires on return and connects Google
       return;
     }
 
@@ -119,7 +122,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     const redirectUrl = AuthSession.makeRedirectUri();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: redirectUrl, scopes },
+      options: { redirectTo: redirectUrl, scopes, queryParams },
     });
 
     if (error) throw error;
@@ -131,13 +134,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         const params = new URLSearchParams(url.hash.substring(1));
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
-        const providerToken = params.get('provider_token');
+        const providerRefreshToken = params.get('provider_refresh_token');
         if (accessToken && refreshToken) {
           await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
         }
-        if (providerToken) {
-          await AsyncStorage.setItem(GOOGLE_TOKEN_KEY, providerToken);
-          set({ googleToken: providerToken });
+        if (providerRefreshToken) {
+          await connectGoogle(providerRefreshToken);
         }
       }
     }
@@ -212,9 +214,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   signOut: async () => {
-    await AsyncStorage.removeItem(GOOGLE_TOKEN_KEY);
+    unsubscribeFromChanges();
+    await AsyncStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
     await supabase.auth.signOut();
-    set({ user: null, session: null, googleToken: null, isGuest: false });
+    set({ user: null, session: null, isGuest: false });
   },
 
   continueAsGuest: () => {
@@ -222,7 +225,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 }));
 
-/** Pull remote data, merge with local, and update all stores */
+/** Pull remote data (the server wins), keep new local rows, and update all stores */
 async function performSync(userId: string) {
   try {
     const merged = await syncAll(userId);
@@ -231,6 +234,8 @@ async function performSync(userId: string) {
     useTaskStore.getState().setTasks(merged.tasks);
     useHabitStore.getState().setHabits(merged.habits);
     useGoalStore.getState().setGoals(merged.goals);
+    useMeepleStore.getState().setMeeples(merged.meeples);
+    loadGoogleCalendars().catch(() => {});
 
     // Apply remote settings if they exist
     if (merged.settings) {

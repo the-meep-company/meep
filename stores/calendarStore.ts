@@ -33,16 +33,21 @@ interface CalendarState {
 function syncEvent(event: CalendarEvent) {
   // Lazy imports to avoid circular dependency
   const { useAuthStore } = require('./authStore');
-  const { pushEvent } = require('@/lib/sync');
+  const { pushEvent, writeGoogleEvent } = require('@/lib/sync');
   const user = useAuthStore.getState().user;
-  if (user) pushEvent(event, user.id).catch(() => {});
+  if (!user) return;
+  // Events that live in Google are written through to Google by the server.
+  if (event.googleEventId) writeGoogleEvent(event, user.id).catch(() => {});
+  else pushEvent(event, user.id).catch(() => {});
 }
 
-function syncDeleteEvent(id: string) {
+function syncDeleteEvent(event: CalendarEvent) {
   const { useAuthStore } = require('./authStore');
-  const { deleteRemoteEvent } = require('@/lib/sync');
+  const { deleteRemoteEvent, deleteGoogleEvent } = require('@/lib/sync');
   const user = useAuthStore.getState().user;
-  if (user) deleteRemoteEvent(id).catch(() => {});
+  if (!user) return;
+  if (event.googleEventId) deleteGoogleEvent(event).catch(() => {});
+  else deleteRemoteEvent(event.id).catch(() => {});
 }
 
 export const useCalendarStore = create<CalendarState>()(
@@ -86,8 +91,9 @@ export const useCalendarStore = create<CalendarState>()(
       },
 
       deleteEvent: (id) => {
+        const event = get().events.find((e) => e.id === id);
         set((state) => ({ events: state.events.filter((e) => e.id !== id) }));
-        syncDeleteEvent(id);
+        if (event) syncDeleteEvent(event);
       },
 
       setEvents: (events) => set({ events }),
