@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -8,7 +8,10 @@ import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
-import { useMeepleStore } from '@/stores/meepleStore';
+import { isBot, useMeepleStore } from '@/stores/meepleStore';
+import { useFeedStore } from '@/stores/feedStore';
+import { sendToMeeple } from '@/lib/meeples';
+import FeedCard from '@/components/feed/FeedCard';
 import { useHabitStore } from '@/stores/habitStore';
 import { usePatternStore } from '@/stores/patternStore';
 import { parseBrainDump, sendChatCorrection, sendChatMessage } from '@/lib/ai';
@@ -41,6 +44,15 @@ export default function MeepScreen() {
   const { theme } = useThemeStore();
   const router = useRouter();
   const meeplesUnread = useMeepleStore((s) => s.meeples.filter((m) => m.unread).length);
+  const meeples = useMeepleStore((s) => s.meeples);
+  const feedItems = useFeedStore((s) => s.items);
+  const bots = useMemo(() => meeples.filter(isBot), [meeples]);
+  const visibleFeed = useMemo(() => feedItems.filter((i) => i.status !== 'dismissed'), [feedItems]);
+  // The bot the composer is replying to (from a card's Reply or an @mention).
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const replyTarget = bots.find((b) => b.id === replyTo) ?? null;
+  // A quiet line after handing something to a bot: "→ asked Deadline bot".
+  const [handoffNote, setHandoffNote] = useState<string | null>(null);
   const tabClearance = useTabBarClearance();
   const surface = useSurfaceStyle('strong');
   const nativeGlass = useNativeGlass();
@@ -281,6 +293,15 @@ export default function MeepScreen() {
     setScreenMode('input');
   };
 
+  // Messages for a bot go to its thread; its reply lands there and any new
+  // proposals land in the feed.
+  const handleSendToBot = (botId: string, text: string) => {
+    const bot = bots.find((b) => b.id === botId);
+    if (!bot) return;
+    setHandoffNote(`→ asked ${bot.name}`);
+    sendToMeeple(botId, text);
+  };
+
   // "Ask" on the main composer: opens a fresh conversation with the question already sent.
   const handleAsk = (text: string) => {
     handleStartChat();
@@ -308,11 +329,22 @@ export default function MeepScreen() {
         timezone
       );
 
+      // Meep can hand a message to the bot that owns a pending proposal.
+      const handoffs = (result.actions ?? []).filter((a) => a.type === 'handoff');
+      const notes: string[] = [];
+      for (const h of handoffs) {
+        const bot = bots.find((b) => b.id === h.params.meepleId);
+        if (!bot || !h.params.message) continue;
+        sendToMeeple(bot.id, String(h.params.message));
+        notes.push(`→ asked ${bot.name}`);
+      }
+      const actions = (result.actions ?? []).filter((a) => a.type !== 'handoff');
+
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: result.message,
-        actions: result.actions || undefined,
+        content: [result.message, ...notes].filter(Boolean).join('\n\n'),
+        actions: actions.length ? actions : undefined,
         timestamp: new Date(),
       };
       addMessage(assistantMsg);
@@ -423,11 +455,49 @@ export default function MeepScreen() {
       {/* Content */}
       {screenMode === 'input' ? (
         <View style={[styles.inputContainer, { paddingHorizontal: theme.spacing.screen }]}>
-          <Text accessibilityRole="header" style={[styles.hero, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            What can I take off your mind today?
-          </Text>
-          <View style={styles.flex} />
-          <BrainDumpInput onSubmit={handleBrainDump} onAsk={handleAsk} isProcessing={isProcessing} />
+          {visibleFeed.length === 0 ? (
+            <>
+              <Text accessibilityRole="header" style={[styles.hero, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                What can I take off your mind today?
+              </Text>
+              <View style={styles.flex} />
+            </>
+          ) : (
+            // The bots' feed: checked on your terms, newest first.
+            <ScrollView
+              style={styles.flex}
+              contentContainerStyle={styles.feed}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              accessibilityLabel="Feed"
+            >
+              {visibleFeed.map((item) => (
+                <FeedCard
+                  key={item.id}
+                  item={item}
+                  bot={meeples.find((m) => m.id === item.meepleId)}
+                  onReply={(id) => {
+                    setHandoffNote(null);
+                    setReplyTo(id);
+                  }}
+                />
+              ))}
+            </ScrollView>
+          )}
+          {handoffNote && (
+            <Text accessibilityLiveRegion="polite" style={[styles.handoff, { color: theme.colors.textSecondary }]}>
+              {handoffNote}
+            </Text>
+          )}
+          <BrainDumpInput
+            onSubmit={handleBrainDump}
+            onAsk={handleAsk}
+            isProcessing={isProcessing}
+            bots={bots}
+            target={replyTarget}
+            onTargetChange={setReplyTo}
+            onSendToBot={handleSendToBot}
+          />
         </View>
       ) : screenMode === 'chat' ? (
         <View style={styles.reviewContainer}>
@@ -593,6 +663,15 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 15,
     letterSpacing: 0.2,
+  },
+  feed: {
+    gap: 12,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  handoff: {
+    fontSize: 13,
+    marginBottom: 8,
   },
   hero: {
     fontSize: 46,

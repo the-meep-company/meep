@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
@@ -6,8 +6,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
-import { useMeepleStore } from '@/stores/meepleStore';
+import { isBot, useMeepleStore } from '@/stores/meepleStore';
 import { CHECK_IN_TEXT, sendToMeeple } from '@/lib/meeples';
+import { TRIGGER_OPTIONS, TRUST_OPTIONS, describeWhen, runBotNow } from '@/lib/bots';
+import { pullBotRuns } from '@/lib/sync';
+import { format, isToday } from 'date-fns';
+import type { BotRun } from '@/types';
 import { applyChatAction } from '@/lib/chatActions';
 import GlassBackground from '@/components/common/GlassBackground';
 import ScreenHeader from '@/components/ui/ScreenHeader';
@@ -36,6 +40,14 @@ export default function MeepleThreadScreen() {
   const setOpen = useMeepleStore((s) => s.setOpen);
   const setActionStatus = useMeepleStore((s) => s.setActionStatus);
   const scrollRef = useRef<ScrollView>(null);
+  const bot = meeple ? isBot(meeple) : false;
+  const [runs, setRuns] = useState<BotRun[]>([]);
+
+  // A bot's recent runs, refreshed whenever it finishes working.
+  useEffect(() => {
+    if (!bot || working) return;
+    pullBotRuns(id).then(setRuns).catch(() => {});
+  }, [bot, working, id]);
 
   // While this thread is on screen its replies are read as they arrive.
   useEffect(() => {
@@ -51,6 +63,17 @@ export default function MeepleThreadScreen() {
   if (!meeple) return null;
 
   const checkIn = () => sendToMeeple(meeple.id, CHECK_IN_TEXT);
+  const runNow = async () => {
+    const store = useMeepleStore.getState();
+    store.setWorking(meeple.id, true);
+    try {
+      await runBotNow(meeple.id, 'manual');
+    } catch (err) {
+      console.warn('[bots] run failed:', err);
+    } finally {
+      useMeepleStore.getState().setWorking(meeple.id, false);
+    }
+  };
 
   return (
     <GlassBackground>
@@ -62,11 +85,13 @@ export default function MeepleThreadScreen() {
             <>
               <IconButton
                 icon="refresh"
-                accessibilityLabel="Check in"
-                accessibilityHint={`Asks ${meeple.name} for an update on its brief`}
+                accessibilityLabel={bot ? 'Run now' : 'Check in'}
+                accessibilityHint={
+                  bot ? `Runs ${meeple.name} once now` : `Asks ${meeple.name} for an update on its brief`
+                }
                 testID="meeple-check-in"
                 disabled={working}
-                onPress={checkIn}
+                onPress={bot ? runNow : checkIn}
               />
               <IconButton
                 icon="pencil"
@@ -94,10 +119,35 @@ export default function MeepleThreadScreen() {
               {meeple.instructions}
             </Text>
             <View style={styles.skills}>
-              {meeple.webSearch && <Skill icon="globe" label="Searches the web" />}
-              {meeple.scheduleAccess && <Skill icon="calendar" label="Sees your schedule" />}
+              {bot ? (
+                <>
+                  <Skill icon={meeple.kind === 'triggered' ? 'bolt' : 'clock-o'} label={describeWhen(meeple)} />
+                  <Skill icon="hand-paper-o" label={TRUST_OPTIONS.find((t) => t.value === meeple.trust)?.label ?? ''} />
+                  {!meeple.enabled && <Skill icon="pause" label="Paused" />}
+                </>
+              ) : (
+                <>
+                  {meeple.webSearch && <Skill icon="globe" label="Searches the web" />}
+                  {meeple.scheduleAccess && <Skill icon="calendar" label="Sees your schedule" />}
+                </>
+              )}
             </View>
           </View>
+
+          {bot && runs.length > 0 && (
+            <View style={[styles.runs, { marginHorizontal: theme.spacing.screen, borderColor: theme.colors.border }]}>
+              <Text accessibilityRole="header" style={[styles.runsTitle, { color: theme.colors.textTertiary }]}>
+                Recent runs
+              </Text>
+              {runs.slice(0, 5).map((r) => (
+                <Text key={r.id} style={[styles.run, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                  {isToday(r.startedAt) ? format(r.startedAt, 'h:mm a') : format(r.startedAt, 'EEE d MMM, h:mm a')}
+                  {' · '}
+                  {runLabel(r)}
+                </Text>
+              ))}
+            </View>
+          )}
 
           {meeple.messages.map((msg) => (
             <View key={msg.id}>
@@ -147,21 +197,39 @@ export default function MeepleThreadScreen() {
             <View style={styles.working} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={theme.colors.textSecondary} />
               <Text style={[styles.workingText, { color: theme.colors.textSecondary }]}>
-                {meeple.name} is on it{meeple.webSearch ? ' — this can take a minute' : ''}…
+                {meeple.name} is on it{meeple.webSearch || bot ? ' — this can take a minute' : ''}…
               </Text>
             </View>
           )}
         </ScrollView>
 
         <View style={{ paddingBottom: insets.bottom, backgroundColor: theme.colors.surface }}>
-          <ChatInput onSend={(text) => sendToMeeple(meeple.id, text)} disabled={working} placeholder={`Give ${meeple.name} a task…`} />
+          <ChatInput onSend={(text) => sendToMeeple(meeple.id, text)} disabled={working} placeholder={bot ? `Ask ${meeple.name} to change something…` : `Give ${meeple.name} a task…`} />
         </View>
       </KeyboardAvoidingView>
     </GlassBackground>
   );
 }
 
-function Skill({ icon, label }: { icon: 'globe' | 'calendar'; label: string }) {
+function runLabel(r: BotRun): string {
+  const why =
+    r.trigger.type === 'schedule'
+      ? 'on schedule'
+      : r.trigger.type === 'event'
+      ? (TRIGGER_OPTIONS.find((t) => t.value === r.trigger.event)?.label.toLowerCase() ?? 'triggered')
+      : r.trigger.type === 'chat'
+      ? 'you messaged it'
+      : r.trigger.type === 'dry_run'
+      ? 'practice run'
+      : 'you ran it';
+  const how =
+    r.status === 'skipped' ? 'skipped (paused)' : r.status === 'error' ? "didn't finish" : r.status === 'running' ? 'running' : 'done';
+  return `${why}, ${how}`;
+}
+
+type SkillIcon = 'globe' | 'calendar' | 'bolt' | 'clock-o' | 'hand-paper-o' | 'pause';
+
+function Skill({ icon, label }: { icon: SkillIcon; label: string }) {
   const { theme } = useThemeStore();
   return (
     <View style={[styles.skill, { borderColor: theme.colors.border }]}>
@@ -190,6 +258,9 @@ const styles = StyleSheet.create({
   },
   sourceText: { fontSize: 12 },
   actions: { paddingHorizontal: 12, marginTop: 4, marginBottom: 8 },
+  runs: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, marginBottom: 16, gap: 4 },
+  runsTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  run: { fontSize: 13 },
   working: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8 },
   workingText: { fontSize: 14 },
 });

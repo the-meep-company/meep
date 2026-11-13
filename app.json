@@ -43,6 +43,7 @@
       "expo-router",
       "expo-localization",
       "expo-apple-authentication",
+      "expo-notifications",
       "@bacons/apple-targets",
       [
         "expo-image-picker",

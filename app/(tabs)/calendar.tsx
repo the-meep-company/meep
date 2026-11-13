@@ -10,6 +10,7 @@ import { usePatternStore } from '@/stores/patternStore';
 import { detectConflictingTasks, autoScheduleTasks } from '@/lib/scheduler';
 import GlassBackground from '@/components/common/GlassBackground';
 import CalendarHeader from '@/components/calendar/CalendarHeader';
+import DraftBar from '@/components/calendar/DraftBar';
 import DayView from '@/components/calendar/DayView';
 import WeekView from '@/components/calendar/WeekView';
 import MonthView from '@/components/calendar/MonthView';
@@ -125,6 +126,7 @@ export default function CalendarScreen() {
   return (
     <GlassBackground style={styles.container}>
       <CalendarHeader />
+      <DraftBar />
 
       {currentView === 'day' && (
         <DayView
@@ -143,6 +145,8 @@ export default function CalendarScreen() {
       )}
 
       <EventFormModal
+        // Remount per event so the form starts from that event, not the last one opened.
+        key={editingEvent?.id ?? selectedSlotDate?.toISOString() ?? 'new'}
         visible={showEventForm}
         initialDate={selectedSlotDate}
         editEvent={editingEvent}

@@ -5,6 +5,7 @@ import {
   startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addDays, addMonths, subDays, subMonths, isWithinInterval, isSameDay,
 } from 'date-fns';
+import { suggestCategory } from '@/lib/categories';
 import type { CalendarEvent, CalendarView } from '@/types';
 
 interface CalendarState {
@@ -75,7 +76,11 @@ export const useCalendarStore = create<CalendarState>()(
         else set({ selectedDate: subMonths(selectedDate, 1) });
       },
 
-      addEvent: (event) => {
+      addEvent: (incoming) => {
+        // New events get a best-guess category (the Weekly bot compares by it).
+        const event = incoming.category
+          ? incoming
+          : { ...incoming, category: suggestCategory(incoming.title, { hasGuests: incoming.hasGuests }) ?? undefined };
         set((state) => ({ events: [...state.events, event] }));
         syncEvent(event);
       },

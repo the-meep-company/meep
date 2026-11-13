@@ -6,8 +6,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
-import { useMeepleStore, type MeepleDraft } from '@/stores/meepleStore';
+import { isBot, useMeepleStore, type MeepleDraft } from '@/stores/meepleStore';
 import { MEEPLE_ICONS, MEEPLE_TEMPLATES } from '@/lib/meeples';
+import { previewBot } from '@/lib/bots';
+import BotSettingsForm, { type BotSettings } from '@/components/bots/BotSettingsForm';
 import GlassBackground from '@/components/common/GlassBackground';
 import IconButton from '@/components/ui/IconButton';
 import { SectionLabel } from '@/components/ui/Typography';
@@ -52,6 +54,20 @@ export default function MeepleEditScreen() {
     return rest;
   });
   const set = (updates: Partial<MeepleDraft>) => setDraft((d) => ({ ...d, ...updates }));
+  const bot = existing ? isBot(existing) : false;
+  const [botSettings, setBotSettings] = useState<BotSettings | null>(() =>
+    existing && isBot(existing)
+      ? {
+          kind: existing.kind,
+          schedule: existing.schedule,
+          trigger: existing.trigger,
+          trust: existing.trust,
+          scope: existing.scope,
+          enabled: existing.enabled,
+          pushEnabled: existing.pushEnabled,
+        }
+      : null
+  );
 
   const canSave = !!draft.name.trim() && !!draft.instructions.trim();
 
@@ -64,7 +80,18 @@ export default function MeepleEditScreen() {
       instructions: draft.instructions.trim(),
     };
     if (existing) {
-      updateMeeple(existing.id, clean);
+      updateMeeple(existing.id, botSettings ? { ...clean, ...botSettings } : clean);
+      // A bot whose job or timing changed shows what it would now do.
+      if (
+        botSettings &&
+        (clean.instructions !== existing.instructions ||
+          botSettings.kind !== existing.kind ||
+          botSettings.schedule !== existing.schedule ||
+          botSettings.trigger !== existing.trigger ||
+          botSettings.scope.join() !== existing.scope.join())
+      ) {
+        previewBot(existing.id);
+      }
       router.back();
     } else {
       const newId = addMeeple(clean);
@@ -157,22 +184,30 @@ export default function MeepleEditScreen() {
             textAlignVertical="top"
           />
 
+          {botSettings && <BotSettingsForm value={botSettings} onChange={setBotSettings} />}
+
           <SectionLabel style={styles.section}>Skills</SectionLabel>
           <SettingsGroup>
             <SettingsRow
               kind="switch"
               title="Search the web"
-              description="Look things up and read pages online"
+              description={
+                bot
+                  ? 'Only while you chat with it; it never browses when running on its own'
+                  : 'Look things up and read pages online'
+              }
               value={draft.webSearch}
               onValueChange={(webSearch) => set({ webSearch })}
             />
-            <SettingsRow
-              kind="switch"
-              title="See my schedule"
-              description="Read your calendar and tasks, and suggest new ones for you to accept"
-              value={draft.scheduleAccess}
-              onValueChange={(scheduleAccess) => set({ scheduleAccess })}
-            />
+            {!bot && (
+              <SettingsRow
+                kind="switch"
+                title="See my schedule"
+                description="Read your calendar and tasks, and suggest new ones for you to accept"
+                value={draft.scheduleAccess}
+                onValueChange={(scheduleAccess) => set({ scheduleAccess })}
+              />
+            )}
           </SettingsGroup>
 
           <SectionLabel style={styles.section}>Look</SectionLabel>

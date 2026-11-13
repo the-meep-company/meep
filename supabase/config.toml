@@ -419,3 +419,14 @@ enabled = true
 # JWT), so it works with the new non-JWT secret keys too.
 [functions.gcal-sync]
 verify_jwt = false
+
+# The bot functions check their callers themselves (service-role key from
+# pg_cron / pg_net, or a user JWT); bots-pause is a signed link with no sign-in.
+[functions.run-bot]
+verify_jwt = false
+
+[functions.bot-tick]
+verify_jwt = false
+
+[functions.bots-pause]
+verify_jwt = false

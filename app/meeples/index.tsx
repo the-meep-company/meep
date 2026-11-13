@@ -1,10 +1,13 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
-import { useMeepleStore } from '@/stores/meepleStore';
+import { isBot, useMeepleStore } from '@/stores/meepleStore';
 import { MEEPLE_TEMPLATES } from '@/lib/meeples';
+import { TRUST_OPTIONS, describeWhen } from '@/lib/bots';
+import PillTabs from '@/components/ui/PillTabs';
+import type { Meeple } from '@/types';
 import GlassBackground from '@/components/common/GlassBackground';
 import ScreenHeader from '@/components/ui/ScreenHeader';
 import IconButton from '@/components/ui/IconButton';
@@ -17,8 +20,12 @@ export default function MeeplesScreen() {
   const router = useRouter();
   const { theme } = useThemeStore();
   const insets = useSafeAreaInsets();
-  const meeples = useMeepleStore((s) => s.meeples);
+  const all = useMeepleStore((s) => s.meeples);
   const workingIds = useMeepleStore((s) => s.workingIds);
+  const updateMeeple = useMeepleStore((s) => s.updateMeeple);
+  const bots = all.filter(isBot);
+  const meeples = all.filter((m) => !isBot(m));
+  const open = (m: Meeple) => router.push({ pathname: '/meeples/[id]', params: { id: m.id } });
 
   const newMeeple = (template?: number) =>
     router.push(template == null ? '/meeples/edit' : { pathname: '/meeples/edit', params: { template: String(template) } });
@@ -44,10 +51,61 @@ export default function MeeplesScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <DisplayTitle lead="Your" title="meeples" style={styles.title} />
+        <DisplayTitle lead="Your" title="crew" style={styles.title} />
         <Text style={[styles.intro, { color: theme.colors.textSecondary }]}>
-          Little agents, each with one job. Give one a brief, hand it tasks, and check in when you want an update.
+          Bots work on your calendar while you're not looking. Meeples are agents you hand tasks to and check in on.
         </Text>
+
+        {bots.length > 0 && (
+          <>
+            <SectionLabel style={styles.sectionFirst}>Bots</SectionLabel>
+            <View style={styles.list}>
+              {bots.map((b) => (
+                <Card key={b.id} radius={theme.borderRadius.lg} style={styles.botCard}>
+                  <Pressable
+                    testID={`bot-${b.name}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${b.name}. ${b.role}. ${describeWhen(b)}${b.enabled ? '' : ', paused'}${b.unread ? ', something new' : ''}`}
+                    accessibilityHint="Opens its thread and recent runs"
+                    onPress={() => open(b)}
+                    style={({ pressed }) => [styles.botTop, pressed && { opacity: 0.7 }]}
+                  >
+                    <MeepleAvatar icon={b.icon} glow={b.glow} size={44} />
+                    <View style={styles.rowText}>
+                      <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
+                        {b.name}
+                      </Text>
+                      <Text style={[styles.preview, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                        {b.role}
+                      </Text>
+                      <Text style={[styles.when, { color: theme.colors.textTertiary }]} numberOfLines={1}>
+                        {workingIds.includes(b.id) ? 'Working on it…' : describeWhen(b)}
+                      </Text>
+                    </View>
+                    {b.unread && <View style={[styles.dot, { backgroundColor: theme.colors.accent }]} {...decorative} />}
+                    <Switch
+                      value={b.enabled}
+                      onValueChange={(enabled) => updateMeeple(b.id, { enabled })}
+                      accessibilityLabel={`${b.name} running`}
+                      trackColor={{ true: theme.colors.primary }}
+                      thumbColor={b.enabled ? theme.colors.onPrimary : undefined}
+                    />
+                  </Pressable>
+                  <PillTabs
+                    layout="fill"
+                    semantics="radio"
+                    accessibilityLabel={`${b.name} trust`}
+                    options={TRUST_OPTIONS.map(({ value, label }) => ({ value, label }))}
+                    value={b.trust}
+                    onChange={(trust) => updateMeeple(b.id, { trust })}
+                  />
+                </Card>
+              ))}
+            </View>
+          </>
+        )}
+
+        {meeples.length > 0 && <SectionLabel style={styles.section}>Meeples</SectionLabel>}
 
         {meeples.length > 0 && (
           <View style={styles.list}>
@@ -65,7 +123,7 @@ export default function MeeplesScreen() {
                   testID={`meeple-${m.name}`}
                   accessibilityRole="button"
                   accessibilityLabel={`${m.name}, ${m.role}${m.unread ? ', new reply' : ''}. ${preview}`}
-                  onPress={() => router.push({ pathname: '/meeples/[id]', params: { id: m.id } })}
+                  onPress={() => open(m)}
                   style={({ pressed }) => pressed && { transform: [{ scale: 0.98 }] }}
                 >
                   <Card radius={theme.borderRadius.lg} style={styles.row}>
@@ -102,8 +160,26 @@ export default function MeeplesScreen() {
           </View>
         )}
 
-        <SectionLabel style={styles.section}>{meeples.length ? 'Add another' : 'Start with one'}</SectionLabel>
+        <SectionLabel style={styles.section}>{all.length ? 'Add another' : 'Start with one'}</SectionLabel>
         <View style={styles.list}>
+          <Pressable
+            testID="new-bot"
+            accessibilityRole="button"
+            accessibilityLabel="Write a bot: tell it what to do and when, and it works on your calendar"
+            onPress={() => router.push('/meeples/new-bot')}
+            style={({ pressed }) => pressed && { transform: [{ scale: 0.98 }] }}
+          >
+            <Card radius={theme.borderRadius.lg} style={styles.row}>
+              <MeepleAvatar icon="magic" glow="sky" size={40} />
+              <View style={styles.rowText}>
+                <Text style={[styles.templateName, { color: theme.colors.text }]}>Write a bot</Text>
+                <Text style={[styles.preview, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                  Tell it what to do and when; it works on your calendar
+                </Text>
+              </View>
+              <FontAwesome name="plus" size={12} color={theme.colors.textTertiary} {...decorative} />
+            </Card>
+          </Pressable>
           {MEEPLE_TEMPLATES.map((t, i) => (
             <Pressable
               key={t.name}
@@ -136,6 +212,10 @@ const styles = StyleSheet.create({
   intro: { fontSize: 15, lineHeight: 21, marginTop: 10, marginBottom: 20 },
   list: { gap: 10 },
   section: { marginTop: 28, marginBottom: 12 },
+  sectionFirst: { marginTop: 4, marginBottom: 12 },
+  botCard: { padding: 14, gap: 12 },
+  botTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  when: { fontSize: 13 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14 },
   rowText: { flex: 1, gap: 3 },
   nameLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },

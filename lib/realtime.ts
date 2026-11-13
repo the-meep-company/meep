@@ -1,10 +1,11 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { fromDbEvent, fromDbMeeple, fromDbMeepleMessage, fromDbTask } from './sync';
+import { fromDbEvent, fromDbFeedItem, fromDbMeeple, fromDbMeepleMessage, fromDbTask } from './sync';
 import { loadGoogleCalendars } from './googleCalendar';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useMeepleStore } from '@/stores/meepleStore';
+import { useFeedStore } from '@/stores/feedStore';
 
 // Keeps the local stores in step with Supabase while the app is open, so changes
 // made by the server (Google sync, bots) or another device show up live. Our own
@@ -43,6 +44,7 @@ export function subscribeToChanges(userId: string) {
     }),
     deletes('meeple_messages', (id) => useMeepleStore.getState().removeRemoteMessage(id)),
     upserts('google_calendars', () => loadGoogleCalendars().catch(() => {})),
+    upserts('feed_items', (row) => useFeedStore.getState().upsertItem(fromDbFeedItem(row))),
   ]) {
     ch = attach(ch);
   }

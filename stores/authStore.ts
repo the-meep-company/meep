@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-import { syncAll, pushSettings } from '@/lib/sync';
+import { syncAll, pushSettings, pullFeed } from '@/lib/sync';
+import { seedStarterBots } from '@/lib/bots';
+import { registerForPush, unregisterForPush } from '@/lib/push';
 import { connectGoogle, loadGoogleCalendars } from '@/lib/googleCalendar';
 import { subscribeToChanges, unsubscribeFromChanges } from '@/lib/realtime';
 import { useCalendarStore } from './calendarStore';
@@ -11,6 +13,7 @@ import { useGoalStore } from './goalStore';
 import { useSettingsStore } from './settingsStore';
 import { useThemeStore } from './themeStore';
 import { useMeepleStore } from './meepleStore';
+import { useFeedStore } from './feedStore';
 import { AppState, Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -215,6 +218,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   signOut: async () => {
     unsubscribeFromChanges();
+    await unregisterForPush();
     await AsyncStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
     await supabase.auth.signOut();
     set({ user: null, session: null, isGuest: false });
@@ -236,6 +240,7 @@ async function performSync(userId: string) {
     useGoalStore.getState().setGoals(merged.goals);
     useMeepleStore.getState().setMeeples(merged.meeples);
     loadGoogleCalendars().catch(() => {});
+    pullFeed(userId).then((items) => useFeedStore.getState().setItems(items)).catch(() => {});
 
     // Apply remote settings if they exist
     if (merged.settings) {
@@ -259,6 +264,11 @@ async function performSync(userId: string) {
         theme: themeName,
       });
     }
+
+    // After settings exist remotely, so the seeded list has a row to live on.
+    await seedStarterBots(userId);
+    // Keep this device's token fresh if any bot may notify (never prompts here).
+    if (useMeepleStore.getState().meeples.some((m) => m.pushEnabled)) registerForPush({ ask: false });
   } catch (err) {
     console.warn('[sync] Initial sync failed:', err);
   }
