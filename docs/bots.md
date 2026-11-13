@@ -46,8 +46,9 @@ Tables:
 5. **Trust.** Trust decides what happens to each change. Applied changes go through `writeEvent(..., 'bot')` and become a `done` item; everything else becomes a `proposal`. New blocks go into the primary calendar the bots can write to (tagged `extendedProperties.private.meepBot`), or stay Meep-only if there isn't one.
 6. **Feed and thread.** The bot leaves a line in its thread only when it actually did something. Chat turns always reply.
 
-`feed-action` handles approve (all or some changes), dismiss and undo. Approving
-re-checks the changes against the current calendar first. Undo is all or nothing.
+`feed-action` handles approve (all or some changes, optionally with new times
+from tweaking), dismiss and undo. Approving re-checks the changes against the
+current calendar first. Undo is all or nothing.
 It is refused once any affected block's `updated_at` has moved since the bot
 touched it.
 
@@ -65,6 +66,22 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
 - The composer sends to a bot after a card's Reply or an `@name`. Otherwise it goes to Meep, which can hand the message off to the bot whose proposal it's about.
 - Starter bots are created once per user (`user_settings.seeded_bots`) with stable ids, so a deleted starter stays deleted.
 
+### Starter bots
+- **Deadline bot** (triggered on `task.deadline_changed`) works back from the due
+  date into focus blocks, at most one per day and 90 minutes each, finishing two
+  hours before the deadline. It uses `suggest_focus_blocks`.
+- **Morning bot** (scheduled, 07:30 local daily) drafts today from today's events
+  and open tasks and sends one card for the whole day. It is a *day-plan* bot
+  (`DAY_PLAN_TEMPLATES`):
+  - Validation rejects changes that aren't on today.
+  - A new plan dismisses its earlier one if that one is still waiting.
+  - Tweak opens the plan on the calendar's day view. Drag a block to move it
+    (15-minute steps), or × to leave it out, then approve from the bar above the
+    calendar (`components/calendar/DraftBlocks.tsx`, `DraftBar.tsx`).
+  - Proposals that span several days are tweaked on the card instead, by
+    choosing which changes to keep.
+  - "Reply" on any card is tweak-by-talking.
+
 ## Adding a fifth bot
 1. Add it to `STARTER_BOTS` in `lib/bots.ts`:
    - a `StarterKey`
@@ -72,7 +89,7 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
    - kind with its schedule or trigger
    - `trust: 'ask'` and a scope
    It is created for every user on their next sync.
-2. If it plans a lot (whole days, weeks), add its key to `DEEP_TEMPLATES` in `_shared/bots.ts` so it gets the deeper model.
+2. If it plans a lot (whole days, weeks), add its key to `DEEP_TEMPLATES` in `_shared/bots.ts` so it gets the deeper model. If its output is a plan for a single day, add it to `DAY_PLAN_TEMPLATES` too.
 3. If it needs a computation the model shouldn't guess (free time, totals), add a pure helper next to `_shared/freeTime.ts` and expose it as a tool in `toolsFor`.
 
 ## Adding a trigger type

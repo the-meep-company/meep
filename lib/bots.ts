@@ -7,7 +7,7 @@ import type { BotScope, BotTrigger, BotTrust, FeedItem, Meeple } from '@/types';
 // server runs them (supabase/functions/run-bot); this file is the app's side:
 // starter bots, the schedule / trigger / trust vocabulary, and feed actions.
 
-export type StarterKey = 'deadline';
+export type StarterKey = 'deadline' | 'morning';
 
 /** Shipped with the app; created for every user on first sign-in, all on "Ask me". */
 export const STARTER_BOTS: Record<StarterKey, MeepleDraft & { kind: Meeple['kind'] }> = {
@@ -27,6 +27,23 @@ export const STARTER_BOTS: Record<StarterKey, MeepleDraft & { kind: Meeple['kind
     enabled: true,
     pushEnabled: false,
     template: 'deadline',
+  },
+  morning: {
+    name: 'Morning bot',
+    role: "Drafts your day's blocks each morning",
+    instructions:
+      "Each morning, look at today's events and my open tasks and draft the day: put the most pressing tasks into today's free time as blocks, biggest-brain work earlier, with breaks between them. Don't pack every gap, and leave anything with guests alone. Send me the whole day as one plan.",
+    icon: 'sun-o',
+    glow: 'sky',
+    webSearch: false,
+    scheduleAccess: true,
+    kind: 'scheduled',
+    schedule: '30 7 * * *',
+    trust: 'ask',
+    scope: ['read_calendar', 'read_tasks', 'propose_blocks', 'write_blocks'],
+    enabled: true,
+    pushEnabled: false,
+    template: 'morning',
   },
 };
 
@@ -105,6 +122,8 @@ export function describeWhen(m: Pick<Meeple, 'kind' | 'schedule' | 'trigger'>): 
 async function invoke<T>(name: string, body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) {
+    // Never reached the function (offline, or it isn't deployed).
+    if (error.name === 'FunctionsFetchError') throw new Error("Couldn't reach Meep. Check your connection and try again.");
     const detail = await (error as any).context?.json?.().catch(() => null);
     throw new Error(detail?.error ?? error.message);
   }
@@ -166,13 +185,15 @@ const NEXT_STATUS: Record<'approve' | 'dismiss' | 'undo', FeedItem['status']> = 
 export async function feedAction(
   item: FeedItem,
   action: 'approve' | 'dismiss' | 'undo',
-  changeIds?: string[]
+  changeIds?: string[],
+  /** New times for some changes, from tweaking the plan on the day view. */
+  edits?: Record<string, { start: string; end: string }>
 ): Promise<string | null> {
   const feed = useFeedStore.getState();
   if (feed.busyIds.includes(item.id)) return null;
   feed.setBusy(item.id, true);
   try {
-    await invoke('feed-action', { itemId: item.id, action, changeIds });
+    await invoke('feed-action', { itemId: item.id, action, changeIds, edits });
     feed.patchItem(item.id, { status: NEXT_STATUS[action] });
     return null;
   } catch (err) {
@@ -180,6 +201,16 @@ export async function feedAction(
   } finally {
     useFeedStore.getState().setBusy(item.id, false);
   }
+}
+
+/** True when every change in a proposal is on its one day, so it can be tweaked on the day view. */
+export function isDayPlan(item: FeedItem): boolean {
+  if (item.type !== 'proposal' || !item.day) return false;
+  const local = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  return item.changes.every((c) => [c.before, c.after].every((t) => !t || local(t.start) === item.day));
 }
 
 /** Creates any starter bots this user hasn't had yet. Deleted starters stay deleted. */

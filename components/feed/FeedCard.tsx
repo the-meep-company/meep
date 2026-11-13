@@ -5,7 +5,8 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
 import { useFeedStore } from '@/stores/feedStore';
 import { useCalendarStore } from '@/stores/calendarStore';
-import { feedAction } from '@/lib/bots';
+import { useRouter } from 'expo-router';
+import { feedAction, isDayPlan } from '@/lib/bots';
 import Card from '@/components/ui/Card';
 import MeepleAvatar from '@/components/meeples/MeepleAvatar';
 import MiniDayView from './MiniDayView';
@@ -32,6 +33,7 @@ interface Props {
 
 export default function FeedCard({ item, bot, onReply }: Props) {
   const { theme } = useThemeStore();
+  const router = useRouter();
   const busy = useFeedStore((s) => s.busyIds.includes(item.id));
   // Select the stable events array and filter here; a selector returning a
   // fresh array would re-render forever.
@@ -44,6 +46,21 @@ export default function FeedCard({ item, bot, onReply }: Props) {
   const [tweaking, setTweaking] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(item.changes.map((c) => c.id)));
   const [note, setNote] = useState<string | null>(null);
+
+  // A plan for one day is tweaked on the day view itself; anything wider by
+  // choosing which changes to keep, here on the card.
+  const dayPlan = isDayPlan(item);
+  const tweak = () => {
+    if (!dayPlan) {
+      setTweaking((t) => !t);
+      return;
+    }
+    useFeedStore.getState().startDraft(item.id);
+    const calendar = useCalendarStore.getState();
+    calendar.setSelectedDate(parseISO(item.day!));
+    calendar.setView('day');
+    router.navigate('/(tabs)/calendar');
+  };
 
   const act = async (action: 'approve' | 'dismiss' | 'undo', changeIds?: string[]) => {
     setNote(null);
@@ -150,8 +167,8 @@ export default function FeedCard({ item, bot, onReply }: Props) {
         {item.type === 'proposal' && pending && !busy && (
           <>
             <Chip label="Dismiss" onPress={() => act('dismiss')} />
-            {item.changes.length > 1 && (
-              <Chip label={tweaking ? 'Cancel' : 'Tweak'} onPress={() => setTweaking((t) => !t)} />
+            {(dayPlan || item.changes.length > 1) && (
+              <Chip label={tweaking ? 'Cancel' : 'Tweak'} onPress={tweak} />
             )}
             <Chip
               primary

@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { admin } from '../_shared/admin.ts';
 import { userIdFrom } from '../_shared/auth.ts';
 import { CORS, json } from '../_shared/cors.ts';
-import { applyChange, type FeedPayload, loadBot, recheck, undoChanges } from '../_shared/bots.ts';
+import { applyChange, type FeedPayload, loadBot, recheck, undoChanges, withEdits } from '../_shared/bots.ts';
 
 // Approve (all, or some), dismiss, or undo a feed item. Approved changes are
 // applied on the bot's behalf; undo works until the block is touched again.
@@ -13,10 +13,12 @@ serve(async (req: Request) => {
   try {
     const userId = await userIdFrom(req);
     if (!userId) return json({ error: 'Not signed in' }, 401);
-    const { itemId, action, changeIds } = (await req.json()) as {
+    const { itemId, action, changeIds, edits } = (await req.json()) as {
       itemId: string;
       action: 'approve' | 'dismiss' | 'undo';
       changeIds?: string[];
+      /** New times for some changes, from tweaking them on the day view. */
+      edits?: Record<string, { start: string; end: string }>;
     };
 
     const { data: item } = await admin.from('feed_items').select('*').eq('id', itemId).eq('user_id', userId).maybeSingle();
@@ -34,14 +36,15 @@ serve(async (req: Request) => {
       const bot = await loadBot(item.meeple_id);
       if (!bot) return json({ error: 'That bot was deleted' }, 410);
 
-      const chosen = new Set(changeIds ?? payload.changes.map((c) => c.id));
-      const selected = payload.changes.filter((c) => chosen.has(c.id));
+      const all = withEdits(payload.changes, edits);
+      const chosen = new Set(changeIds ?? all.map((c) => c.id));
+      const selected = all.filter((c) => chosen.has(c.id));
       if (!selected.length) return json({ error: 'Nothing selected' }, 400);
       const problem = await recheck(userId, selected);
       if (problem) return json({ error: `Things have moved since: ${problem}` }, 409);
 
       const changes = [];
-      for (const c of payload.changes) changes.push(chosen.has(c.id) ? await applyChange(bot, c) : c);
+      for (const c of all) changes.push(chosen.has(c.id) ? await applyChange(bot, c) : c);
       const anyApplied = changes.some((c) => c.applied);
       await admin
         .from('feed_items')

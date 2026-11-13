@@ -75,6 +75,8 @@ export interface FeedPayload {
 const DEEP_MODEL = Deno.env.get('BOT_MODEL_DEEP') ?? 'claude-opus-5-5';
 const FAST_MODEL = Deno.env.get('BOT_MODEL_FAST') ?? 'claude-sonnet-5-5';
 const DEEP_TEMPLATES = new Set(['morning', 'weekly']);
+/** Bots whose output is a plan for one day, delivered as a single card. */
+const DAY_PLAN_TEMPLATES = new Set(['morning']);
 
 const WINDOW_BACK_MS = 86400000;
 const WINDOW_AHEAD_MS = 21 * 86400000;
@@ -223,6 +225,11 @@ function systemPrompt(bot: BotRow, ctx: BotContext, triggerText: string, feed: s
   if (bot.scope.includes('read_calendar')) parts.push(`Calendar (yesterday to three weeks out; ids in brackets):\n${describeEvents(ctx)}`);
   if (bot.scope.includes('read_tasks')) parts.push(`Open tasks:\n${describeTasks(ctx)}`);
   parts.push(`Your recent feed items:\n${feed}`);
+  if (DAY_PLAN_TEMPLATES.has(bot.template ?? '')) {
+    parts.push(
+      `You plan one day: today (${zonedYmd(ctx.now, ctx.tz)}). Draft today's blocks from the open tasks (most urgent and due-soonest first, using their estimates) in today's free time from now on, leaving some breathing room rather than packing every gap. Submit the whole day in one submit_changes call; the user approves the day as one card. Only touch today. If today is already full or there's nothing worth planning, say so instead of submitting.`
+    );
+  }
 
   if (canChange) {
     parts.push(
@@ -321,7 +328,12 @@ function toolsFor(bot: BotRow, chat: boolean): Anthropic.Beta.BetaToolUnion[] {
 
 // ===== Validation =====
 
-export function validate(raw: BlockChange[], ctx: BotContext): { changes: StoredChange[]; problems: string[] } {
+export function validate(
+  raw: BlockChange[],
+  ctx: BotContext,
+  /** When set, every change must be on this local day (YYYY-MM-DD). */
+  onlyDay?: string
+): { changes: StoredChange[]; problems: string[] } {
   const problems: string[] = [];
   const changes: StoredChange[] = [];
   const byId = new Map(ctx.events.map((e) => [e.id, e]));
@@ -361,6 +373,9 @@ export function validate(raw: BlockChange[], ctx: BotContext): { changes: Stored
     if (e - s < 10 * 60000 || e - s > 8 * 3600000) return problems.push(`${label}: blocks must be 10 minutes to 8 hours`);
     if (s < earliest) return problems.push(`${label}: starts in the past`);
     if (s > ctx.now.getTime() + 60 * 86400000) return problems.push(`${label}: more than 60 days out`);
+    if (onlyDay && (zonedYmd(new Date(s), ctx.tz) !== onlyDay || zonedYmd(new Date(e - 1), ctx.tz) !== onlyDay)) {
+      return problems.push(`${label}: must be on ${onlyDay}`);
+    }
     const clash = busy.find((b) => s < b.end && e > b.start);
     if (clash) return problems.push(`${label}: overlaps "${clash.title}"`);
 
@@ -395,6 +410,21 @@ export function validate(raw: BlockChange[], ctx: BotContext): { changes: Stored
   });
 
   return { changes, problems };
+}
+
+/**
+ * Applies the user's edits from tweaking (new times for some changes) to stored
+ * changes. Only times move; what each change is and which event it touches don't.
+ */
+export function withEdits(changes: StoredChange[], edits: Record<string, { start: string; end: string }> = {}): StoredChange[] {
+  return changes.map((c) => {
+    const e = edits[c.id];
+    if (!e || c.kind === 'delete') return c;
+    const start = new Date(e.start);
+    const end = new Date(e.end);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return c;
+    return { ...c, after: { start: start.toISOString(), end: end.toISOString() } };
+  });
 }
 
 /** Re-checks stored changes against the calendar as it is now (before approving). */
@@ -601,6 +631,8 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
       if (prev.role === 'user' && prev.content === trigger.message) messages.splice(messages.length - 2, 1);
     }
 
+    const dayPlan = DAY_PLAN_TEMPLATES.has(bot.template ?? '');
+    const today = zonedYmd(ctx.now, ctx.tz);
     let submitted: { summary: string; changes: StoredChange[] } | null = null;
     const reports: { title: string; body: string }[] = [];
 
@@ -624,7 +656,7 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
         });
       }
       if (call.name === 'submit_changes') {
-        const { changes, problems } = validate((input.changes ?? []) as BlockChange[], ctx);
+        const { changes, problems } = validate((input.changes ?? []) as BlockChange[], ctx, dayPlan ? today : undefined);
         if (problems.length) {
           return `Not accepted. Fix these and call submit_changes again with the full corrected list:\n${problems.join('\n')}`;
         }
@@ -649,6 +681,15 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
 
     const feedItemIds: string[] = [];
     const sub = submitted as { summary: string; changes: StoredChange[] } | null;
+    if (sub?.changes.length && dayPlan && !dryRun) {
+      // A new plan for the day replaces any earlier one still waiting.
+      await admin
+        .from('feed_items')
+        .update({ status: 'dismissed' })
+        .eq('meeple_id', bot.id)
+        .eq('type', 'proposal')
+        .eq('status', 'pending');
+    }
     if (sub?.changes.length) {
       const day = zonedYmd(new Date(sub.changes[0].after?.start ?? sub.changes[0].before!.start), ctx.tz);
       const autoApply = (c: StoredChange) =>
