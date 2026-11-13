@@ -295,6 +295,7 @@ export type BotTrigger =
   | 'task.created'
   | 'block.skipped'
   | 'block.overran'
+  | 'block.drifted' // either of the two above
   | 'calendar.event_added';
 
 export interface BotFields {

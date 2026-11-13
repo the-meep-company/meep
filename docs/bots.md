@@ -15,7 +15,7 @@ meeples are `chat`). The bot fields are:
 |---|---|
 | `instructions` | The bot's brief, in the user's words. It is the prompt. |
 | `schedule` | Cron with 5 fields on the user's local clock (`user_settings.timezone`), for scheduled bots |
-| `trigger` | `task.deadline_changed`, `task.created`, `block.skipped`, `block.overran`, `calendar.event_added` |
+| `trigger` | `task.deadline_changed`, `task.created`, `block.skipped`, `block.overran`, `block.drifted` (either of the two before it), `calendar.event_added` |
 | `trust` | `ask`: only proposes. `ask_big`: applies moves under 2h on the same day, proposes the rest. `auto`: applies everything and reports. Default `ask`. |
 | `scope` | `read_calendar`, `read_tasks`, `propose_blocks`, `write_blocks`. With neither of the last two, a bot is read-only and can only report. |
 | `enabled`, `push_enabled`, `template` | Whether it runs on its own, whether it may push (not yet used), and which starter it came from, if any |
@@ -28,7 +28,7 @@ Tables:
   - `done`: undo.
   - `insight`: read-only.
   - `payload.changes` holds the before and after of every change, plus the full prior row. That is what undo uses.
-- `bot_events`: the trigger queue. Postgres triggers on `tasks` and `events` fill it, but only when the user has an enabled bot listening.
+- `bot_events`: the trigger queue. Postgres triggers on `tasks` and `events` fill it, but only when the user has an enabled bot listening (`bot_listens`).
 - `app_config`: holds the `bots_paused` kill switch.
 - `ops_alerts`: one alert per user per day.
 
@@ -72,7 +72,7 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
   hours before the deadline. It uses `suggest_focus_blocks`.
 - **Morning bot** (scheduled, 07:30 local daily) drafts today from today's events
   and open tasks and sends one card for the whole day. It is a *day-plan* bot
-  (`DAY_PLAN_TEMPLATES`):
+  (`DAY_PLAN_PROMPTS`):
   - Validation rejects changes that aren't on today.
   - A new plan dismisses its earlier one if that one is still waiting.
   - Tweak opens the plan on the calendar's day view. Drag a block to move it
@@ -81,6 +81,21 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
   - Proposals that span several days are tweaked on the card instead, by
     choosing which changes to keep.
   - "Reply" on any card is tweak-by-talking.
+- **Drift bot** (triggered on `block.drifted`, off until the user turns it on)
+  reworks the rest of today when a block is skipped or runs over. It is a day-plan
+  bot too, so its card can be tweaked on the day view and a newer reflow replaces
+  an older one still waiting.
+  - Blocks get a status: `planned`, `done` or `skipped`. The user checks them off
+    with the circle on a block or in the event form (`lib/eventStatus.ts`), where
+    "Running over" pushes the block's end 15 minutes past now.
+  - `block.skipped` is queued when a block's status becomes `skipped`.
+  - `block.overran` is queued when the user pushes out the end of a block that's
+    under way (same start, later end), or by `flag_overran_blocks()`, which
+    bot-tick calls every 5 minutes. That flags blocks still `planned` 15 minutes
+    after they end, once each, within the hour. Meetings with guests, all-day
+    events and habits are never flagged.
+  - A skipped block's time counts as free for every bot.
+  - Copy stays neutral: "moved Essay to 3pm", never "missed".
 
 ## Adding a fifth bot
 1. Add it to `STARTER_BOTS` in `lib/bots.ts`:
@@ -89,12 +104,12 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
    - kind with its schedule or trigger
    - `trust: 'ask'` and a scope
    It is created for every user on their next sync.
-2. If it plans a lot (whole days, weeks), add its key to `DEEP_TEMPLATES` in `_shared/bots.ts` so it gets the deeper model. If its output is a plan for a single day, add it to `DAY_PLAN_TEMPLATES` too.
+2. If it plans a lot (whole days, weeks), add its key to `DEEP_TEMPLATES` in `_shared/bots.ts` so it gets the deeper model. If its output is a plan for today, add its instructions to `DAY_PLAN_PROMPTS` too.
 3. If it needs a computation the model shouldn't guess (free time, totals), add a pure helper next to `_shared/freeTime.ts` and expose it as a tool in `toolsFor`.
 
 ## Adding a trigger type
-1. Add it to the `trigger` check in a new migration, and to `BotTrigger` in `types/index.ts`.
-2. Emit it with `public.enqueue_bot_event(user_id, '<type>', payload)`, either from a Postgres trigger or from bot-tick for time-based ones.
+1. Add it to the `trigger` check (`meeples_trigger_check`) in a new migration, and to `BotTrigger` in `types/index.ts`.
+2. Emit it with `public.enqueue_bot_event(user_id, '<type>', payload)`, either from a Postgres trigger or, for time-based ones, from a function bot-tick calls (like `flag_overran_blocks`).
 3. Describe its payload in `describeTrigger` (`_shared/bots.ts`), and offer it in `TRIGGER_OPTIONS` (`lib/bots.ts`).
 
 ## Foundation (feature/bots-foundation)

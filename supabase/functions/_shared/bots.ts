@@ -75,8 +75,23 @@ export interface FeedPayload {
 const DEEP_MODEL = Deno.env.get('BOT_MODEL_DEEP') ?? 'claude-opus-5-5';
 const FAST_MODEL = Deno.env.get('BOT_MODEL_FAST') ?? 'claude-sonnet-5-5';
 const DEEP_TEMPLATES = new Set(['morning', 'weekly']);
-/** Bots whose output is a plan for one day, delivered as a single card. */
-const DAY_PLAN_TEMPLATES = new Set(['morning']);
+/**
+ * Bots whose output is a plan for one day (today), delivered as a single card
+ * that replaces any earlier one still waiting. Each gets its own instructions.
+ */
+const DAY_PLAN_PROMPTS: Record<string, (today: string) => string> = {
+  morning: (today) =>
+    `You plan one day: today (${today}). Draft today's blocks from the open tasks (most urgent and due-soonest first, using their estimates) in today's free time from now on, leaving some breathing room rather than packing every gap. Submit the whole day in one submit_changes call; the user approves the day as one card. Only touch today. If today is already full or there's nothing worth planning, say so instead of submitting.`,
+  drift: (today) =>
+    `You keep today (${today}) workable when a block drifts: it was skipped, or it ran past its end without being checked off (the user may still be on it). Rework the rest of today from now on so it still fits: move what the drift pushes out, or give a skipped block's work a later slot today, into the free time that's left. Skipped blocks' time is free. Move as little as you can, keep events with guests and read-only events where they are, and submit the whole reworked day in one submit_changes call. If the rest of today still works, change nothing. If something won't fit today, leave it and say so in a sentence. Never point at what didn't happen: no "missed", no "behind", just where things are now.`,
+};
+const isDayPlan = (bot: BotRow) => Object.hasOwn(DAY_PLAN_PROMPTS, bot.template ?? '');
+
+/** Time that's taken: timed events, except blocks the user skipped. */
+const busyTimes = (ctx: BotContext) =>
+  ctx.events
+    .filter((e) => !e.all_day && e.status !== 'skipped')
+    .map((e) => ({ start: new Date(e.start_time), end: new Date(e.end_time) }));
 
 const WINDOW_BACK_MS = 86400000;
 const WINDOW_AHEAD_MS = 21 * 86400000;
@@ -193,7 +208,8 @@ async function describeTrigger(userId: string, trigger: RunTrigger, ctx: BotCont
         }
         if (typeof p.event_id === 'string') {
           const e = ctx.events.find((x) => x.id === p.event_id);
-          if (e) lines.push(`- Event [${e.id}] ${e.title}, ${shortLocal(new Date(e.start_time), ctx.tz)}`);
+          const drift = p.drift === 'skipped' ? ' (skipped)' : p.drift === 'overran' ? ' (ran past its end, not checked off)' : '';
+          if (e) lines.push(`- Event [${e.id}] ${e.title}, ${shortLocal(new Date(e.start_time), ctx.tz)}–${shortLocal(new Date(e.end_time), ctx.tz).slice(4)}${drift}`);
         }
       }
       return lines.join('\n');
@@ -225,11 +241,7 @@ function systemPrompt(bot: BotRow, ctx: BotContext, triggerText: string, feed: s
   if (bot.scope.includes('read_calendar')) parts.push(`Calendar (yesterday to three weeks out; ids in brackets):\n${describeEvents(ctx)}`);
   if (bot.scope.includes('read_tasks')) parts.push(`Open tasks:\n${describeTasks(ctx)}`);
   parts.push(`Your recent feed items:\n${feed}`);
-  if (DAY_PLAN_TEMPLATES.has(bot.template ?? '')) {
-    parts.push(
-      `You plan one day: today (${zonedYmd(ctx.now, ctx.tz)}). Draft today's blocks from the open tasks (most urgent and due-soonest first, using their estimates) in today's free time from now on, leaving some breathing room rather than packing every gap. Submit the whole day in one submit_changes call; the user approves the day as one card. Only touch today. If today is already full or there's nothing worth planning, say so instead of submitting.`
-    );
-  }
+  if (isDayPlan(bot)) parts.push(DAY_PLAN_PROMPTS[bot.template!](zonedYmd(ctx.now, ctx.tz)));
 
   if (canChange) {
     parts.push(
@@ -338,9 +350,10 @@ export function validate(
   const changes: StoredChange[] = [];
   const byId = new Map(ctx.events.map((e) => [e.id, e]));
   const touched = new Set(raw.filter((c) => c.kind !== 'create').map((c) => (c as { event_id: string }).event_id));
-  // Busy time the new plan must not overlap: untouched timed events plus accepted changes.
+  // Busy time the new plan must not overlap: untouched timed events (skipped
+  // blocks' time is free) plus accepted changes.
   const busy = ctx.events
-    .filter((e) => !e.all_day && !touched.has(e.id))
+    .filter((e) => !e.all_day && e.status !== 'skipped' && !touched.has(e.id))
     .map((e) => ({ start: new Date(e.start_time).getTime(), end: new Date(e.end_time).getTime(), title: e.title }));
   const earliest = ctx.now.getTime() - 5 * 60000;
 
@@ -631,7 +644,7 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
       if (prev.role === 'user' && prev.content === trigger.message) messages.splice(messages.length - 2, 1);
     }
 
-    const dayPlan = DAY_PLAN_TEMPLATES.has(bot.template ?? '');
+    const dayPlan = isDayPlan(bot);
     const today = zonedYmd(ctx.now, ctx.tz);
     let submitted: { summary: string; changes: StoredChange[] } | null = null;
     const reports: { title: string; body: string }[] = [];
@@ -639,14 +652,14 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
     const onToolCall = (call: ToolCall): string => {
       const input = call.input as Record<string, any>;
       if (call.name === 'find_free_time') {
-        const busy = ctx.events.filter((e) => !e.all_day).map((e) => ({ start: new Date(e.start_time), end: new Date(e.end_time) }));
+        const busy = busyTimes(ctx);
         const slots = freeSlots(busy, new Date(input.from), new Date(input.to), ctx.tz).filter(
           (s) => s.minutes >= (input.min_minutes ?? 0)
         );
         return JSON.stringify(slots.slice(0, 40).map((s) => ({ start: s.start.toISOString(), end: s.end.toISOString(), minutes: s.minutes, local: shortLocal(s.start, ctx.tz) })));
       }
       if (call.name === 'suggest_focus_blocks') {
-        const busy = ctx.events.filter((e) => !e.all_day).map((e) => ({ start: new Date(e.start_time), end: new Date(e.end_time) }));
+        const busy = busyTimes(ctx);
         const plan = workBackFromDeadline(Number(input.total_minutes), new Date(input.due), busy, ctx.now, ctx.tz, {
           maxSession: input.max_session_minutes ?? 90,
         });

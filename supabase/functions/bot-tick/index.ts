@@ -7,10 +7,11 @@ import { pauseLink, postToDiscord } from '../_shared/ops.ts';
 import { isValidTimeZone } from '../_shared/time.ts';
 
 // Every 5 minutes (pg_cron): starts scheduled bots that are due and triggered
-// bots with queued events. Each run goes out through pg_net, so this returns
+// bots with queued events, after flagging blocks that ran over. Each run goes out through pg_net, so this returns
 // quickly and runs don't share one function's time limit.
 
 const RUN_ALERT_THRESHOLD = 50;
+const DRIFT_EVENTS = ['block.skipped', 'block.overran'];
 
 async function timezones(userIds: string[]): Promise<Map<string, string>> {
   if (!userIds.length) return new Map();
@@ -65,34 +66,35 @@ async function queuedEvents(): Promise<number> {
   if (!events?.length) return 0;
 
   // One run per bot per tick, carrying every event it was waiting on.
-  const groups = new Map<string, { userId: string; type: string; payloads: unknown[] }>();
+  // 'block.drifted' bots hear both block.skipped and block.overran.
+  const listeners = (type: string) => (DRIFT_EVENTS.includes(type) ? [type, 'block.drifted'] : [type]);
+  const userIds = [...new Set(events.map((e) => e.user_id))];
+  const { data: bots } = await admin
+    .from('meeples')
+    .select('id, user_id, trigger')
+    .in('user_id', userIds)
+    .eq('kind', 'triggered')
+    .eq('enabled', true);
+
+  const runs = new Map<string, { trigger: string; payloads: unknown[] }>();
   for (const e of events) {
-    const key = `${e.user_id}|${e.type}`;
-    const g = groups.get(key) ?? { userId: e.user_id, type: e.type, payloads: [] as unknown[] };
-    g.payloads.push(e.payload);
-    groups.set(key, g);
+    for (const bot of bots ?? []) {
+      if (bot.user_id !== e.user_id || !listeners(e.type).includes(bot.trigger)) continue;
+      const run = runs.get(bot.id) ?? { trigger: bot.trigger, payloads: [] as unknown[] };
+      run.payloads.push(e.payload);
+      runs.set(bot.id, run);
+    }
   }
 
-  let started = 0;
-  for (const g of groups.values()) {
-    const { data: bots } = await admin
-      .from('meeples')
-      .select('id')
-      .eq('user_id', g.userId)
-      .eq('kind', 'triggered')
-      .eq('enabled', true)
-      .eq('trigger', g.type);
-    for (const bot of bots ?? []) {
-      await startRun({ meepleId: bot.id, mode: 'event', event: g.type, payloads: g.payloads.slice(0, 20) });
-      started++;
-    }
+  for (const [meepleId, run] of runs) {
+    await startRun({ meepleId, mode: 'event', event: run.trigger, payloads: run.payloads.slice(0, 20) });
   }
 
   await admin
     .from('bot_events')
     .update({ processed_at: new Date().toISOString() })
     .in('id', events.map((e) => e.id));
-  return started;
+  return runs.size;
 }
 
 /** No hard cap: past 50 runs in a (UTC) day, tell the team once, with a pause link. */
@@ -132,6 +134,9 @@ serve(async (req: Request) => {
 
     const now = new Date();
     const scheduled = await dueScheduledBots(now);
+    // Planned blocks that ended 15+ minutes ago and weren't checked off.
+    const { error: flagError } = await admin.rpc('flag_overran_blocks');
+    if (flagError) console.warn('[bot-tick] flag_overran_blocks:', flagError.message);
     const triggered = await queuedEvents();
     await alertBusyUsers(now);
     return json({ scheduled, triggered });

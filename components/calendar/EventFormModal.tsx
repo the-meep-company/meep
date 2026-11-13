@@ -9,6 +9,7 @@ import { useCalendarStore } from '@/stores/calendarStore';
 import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type CalendarEvent } from '@/types';
 import { useReduceMotion, hitSlopFor, a11yState } from '@/lib/accessibility';
+import { canRunOver, canSkip, hasStarted, markRunningOver, setEventStatus } from '@/lib/eventStatus';
 
 // Spoken names for the swatches in EVENT_COLORS (screen readers can't describe a hex).
 const COLOR_NAMES: Record<string, string> = {
@@ -117,6 +118,22 @@ export default function EventFormModal({
     setDescription('');
     setSelectedColor(EVENT_COLORS[0]);
     onClose();
+  };
+
+  // Check-off applies straight away, like Delete, rather than waiting for Save.
+  const status = editEvent?.status ?? 'planned';
+  const checkOff = editEvent
+    ? [
+        hasStarted(editEvent) && { key: 'done', label: 'Done', selected: status === 'done' },
+        canSkip(editEvent) && { key: 'skipped', label: 'Skipped', selected: status === 'skipped' },
+        canRunOver(editEvent) && { key: 'over', label: 'Running over', selected: false },
+      ].filter((o): o is { key: string; label: string; selected: boolean } => !!o)
+    : [];
+  const handleCheckOff = (key: string, selected: boolean) => {
+    if (!editEvent) return;
+    if (key === 'over') markRunningOver(editEvent);
+    else setEventStatus(editEvent, selected ? 'planned' : (key as 'done' | 'skipped'));
+    resetAndClose();
   };
 
   const formatHour = (h: number) =>
@@ -289,6 +306,43 @@ export default function EventFormModal({
               </View>
             </View>
 
+            {checkOff.length > 0 && (
+              <>
+                <Text
+                  accessibilityRole="header"
+                  style={[styles.label, { color: theme.colors.textSecondary }]}
+                >
+                  Check off
+                </Text>
+                <View style={styles.checkRow}>
+                  {checkOff.map((o) => (
+                    <TouchableOpacity
+                      key={o.key}
+                      onPress={() => handleCheckOff(o.key, o.selected)}
+                      accessibilityRole="button"
+                      accessibilityLabel={o.label}
+                      {...a11yState(o.key === 'over' ? undefined : { pressed: o.selected })}
+                      style={[
+                        styles.checkChip,
+                        o.selected
+                          ? { backgroundColor: theme.colors.primary }
+                          : { borderWidth: 1, borderColor: theme.colors.border },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.checkChipText,
+                          { color: o.selected ? theme.colors.onPrimary : theme.colors.text },
+                        ]}
+                      >
+                        {o.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
             {/* Color picker */}
             <Text
               accessibilityRole="header"
@@ -421,6 +475,23 @@ const styles = StyleSheet.create({
   timeDash: {
     fontSize: 18,
     paddingHorizontal: 8,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  checkChip: {
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkChipText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   colorRow: {
     flexDirection: 'row',

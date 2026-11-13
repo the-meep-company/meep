@@ -7,9 +7,12 @@ import type { BotScope, BotTrigger, BotTrust, FeedItem, Meeple } from '@/types';
 // server runs them (supabase/functions/run-bot); this file is the app's side:
 // starter bots, the schedule / trigger / trust vocabulary, and feed actions.
 
-export type StarterKey = 'deadline' | 'morning';
+export type StarterKey = 'deadline' | 'morning' | 'drift';
 
-/** Shipped with the app; created for every user on first sign-in, all on "Ask me". */
+/**
+ * Shipped with the app; created for every user on first sign-in, all on "Ask me".
+ * Drift starts switched off: it only helps once the user checks blocks off.
+ */
 export const STARTER_BOTS: Record<StarterKey, MeepleDraft & { kind: Meeple['kind'] }> = {
   deadline: {
     name: 'Deadline bot',
@@ -45,6 +48,23 @@ export const STARTER_BOTS: Record<StarterKey, MeepleDraft & { kind: Meeple['kind
     pushEnabled: false,
     template: 'morning',
   },
+  drift: {
+    name: 'Drift bot',
+    role: 'Reworks the rest of your day when a block slips',
+    instructions:
+      "When a block gets skipped or runs over, rework the rest of today so it still fits: move what has to move into the time that's left, give skipped work a later slot if there's room, and leave anything with guests where it is. Move as little as possible. If something won't fit today, leave it and tell me in a line.",
+    icon: 'leaf',
+    glow: 'lime',
+    webSearch: false,
+    scheduleAccess: true,
+    kind: 'triggered',
+    trigger: 'block.drifted',
+    trust: 'ask',
+    scope: ['read_calendar', 'read_tasks', 'propose_blocks', 'write_blocks'],
+    enabled: false,
+    pushEnabled: false,
+    template: 'drift',
+  },
 };
 
 export const starterBotId = (key: StarterKey, userId: string) => `bot_${key}_${userId}`;
@@ -55,12 +75,15 @@ export const TRUST_OPTIONS: { value: BotTrust; label: string; description: strin
   { value: 'auto', label: 'Just do it', description: 'Makes changes and tells you what it did. Everything can be undone.' },
 ];
 
-// block.skipped and block.overran exist server-side; they're offered here once
-// the app can mark blocks done/skipped and bot-tick watches for overruns.
+// A block "runs over" when it's still unchecked 15 minutes after it ends, or
+// when the user taps Running over (lib/eventStatus.ts).
 export const TRIGGER_OPTIONS: { value: BotTrigger; label: string }[] = [
   { value: 'task.deadline_changed', label: 'A task gets a due date' },
   { value: 'task.created', label: 'I add a task' },
   { value: 'calendar.event_added', label: 'A new event lands on my calendar' },
+  { value: 'block.drifted', label: 'A block is skipped or runs over' },
+  { value: 'block.skipped', label: 'I skip a block' },
+  { value: 'block.overran', label: 'A block runs over' },
 ];
 
 /** Bots that can change the calendar get both scopes; trust decides what's applied. */
