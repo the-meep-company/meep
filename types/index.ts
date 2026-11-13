@@ -9,6 +9,7 @@ export interface GoogleCalendarInfo {
   foregroundColor: string;
   primary: boolean;
   selected: boolean;    // User's choice to sync this calendar
+  botsCanWrite: boolean; // User lets bots create/move/delete events in this calendar
 }
 
 export interface SyncState {
@@ -18,6 +19,8 @@ export interface SyncState {
 }
 
 export type SyncStatus = 'synced' | 'pending_push' | 'pending_delete' | 'conflict';
+
+export type EventStatus = 'planned' | 'done' | 'skipped';
 
 // ===== Calendar Events =====
 export interface CalendarEvent {
@@ -33,10 +36,15 @@ export interface CalendarEvent {
   calendarId?: string;
   scheduleSource?: ScheduleSource;
   isHabit?: boolean;
-  // Google Calendar sync fields
-  googleEventId?: string;       // Google's event ID, used to match on re-import
-  googleCalendarId?: string;    // Which Google calendar it came from
+  // Google Calendar sync fields (owned by the server's gcal-sync)
+  googleEventId?: string;       // Google's event ID
+  googleCalendarId?: string;    // Which Google calendar it lives in
+  hasGuests?: boolean;          // Has attendees other than the user
   syncStatus?: SyncStatus;
+  status?: EventStatus;         // Defaults to 'planned'
+  category?: string;
+  taskId?: string;              // The task this block is time for
+  botId?: string;               // The bot (meeple) that placed or last moved it
   createdAt: Date;
   updatedAt: Date;
 }

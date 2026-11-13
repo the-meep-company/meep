@@ -1,18 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import Anthropic from 'npm:@anthropic-ai/sdk';
+import { Anthropic, anthropicErrorResponse, runToolLoop } from '../_shared/anthropic.ts';
+import { CORS, json } from '../_shared/cors.ts';
 
 // A meeple is a small standing agent: a name, a job, a brief, and the skills the
 // user switched on. This function runs one turn of its thread.
 
-const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
 const MODEL = Deno.env.get('MEEPLE_MODEL') ?? 'claude-opus-5-5';
-const MAX_ROUNDS = 6;
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
-};
 
 interface MeepleConfig {
   name: string;
@@ -109,13 +102,6 @@ function buildSystemPrompt(
   return parts.join('\n\n');
 }
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...CORS },
-  });
-}
-
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
@@ -147,83 +133,35 @@ serve(async (req: Request) => {
 
     const system = buildSystemPrompt(meeple, companionName || 'Meep', timezone, currentDate, context);
 
-    const text: string[] = [];
-    const actions: { type: string; params: Record<string, unknown>; label: string }[] = [];
-    const sources = new Map<string, string>();
+    const result = await runToolLoop({
+      model: MODEL,
+      system,
+      messages: conversation,
+      tools,
+      onToolCall: () => 'Shown to the user as a card. They will accept or dismiss it in the app.',
+    });
 
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      const response = await client.beta.messages.create({
-        model: MODEL,
-        max_tokens: 16000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'medium' },
-        system,
-        messages: conversation,
-        ...(tools.length ? { tools } : {}),
-      });
-
-      if (response.stop_reason === 'refusal') {
-        return json({ message: "Sorry, that's not something I can help with.", actions: null, sources: [] });
-      }
-
-      const proposals: Anthropic.Beta.BetaToolUseBlock[] = [];
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          text.push(block.text);
-          for (const c of block.citations ?? []) {
-            if (c.type === 'web_search_result_location' && c.url) sources.set(c.url, c.title || c.url);
-          }
-        } else if (block.type === 'tool_use') {
-          proposals.push(block);
-        }
-      }
-
-      if (response.stop_reason === 'pause_turn') {
-        // A long web-search turn: send it back and the server resumes it.
-        conversation.push({ role: 'assistant', content: response.content });
-        continue;
-      }
-
-      if (response.stop_reason === 'tool_use' && proposals.length) {
-        for (const p of proposals) {
-          const params = p.input as Record<string, unknown>;
-          const isTask = p.name === 'propose_task';
-          actions.push({
-            type: isTask ? 'create_task' : 'create_event',
-            params,
-            label: `${isTask ? 'Add task' : 'Add event'}: ${String(params.title ?? '')}`,
-          });
-        }
-        conversation.push({ role: 'assistant', content: response.content });
-        conversation.push({
-          role: 'user',
-          content: proposals.map((p) => ({
-            type: 'tool_result' as const,
-            tool_use_id: p.id,
-            content: 'Shown to the user as a card. They will accept or dismiss it in the app.',
-          })),
-        });
-        text.push('\n\n');
-        continue;
-      }
-
-      break;
+    if (result.refused) {
+      return json({ message: "Sorry, that's not something I can help with.", actions: null, sources: [] });
     }
 
-    const message = text.join('').replace(/\n{3,}/g, '\n\n').trim();
+    const actions = result.calls.map((p) => {
+      const isTask = p.name === 'propose_task';
+      return {
+        type: isTask ? 'create_task' : 'create_event',
+        params: p.input,
+        label: `${isTask ? 'Add task' : 'Add event'}: ${String(p.input.title ?? '')}`,
+      };
+    });
+
     return json({
-      message: message || (actions.length ? "Here's what I'd suggest:" : "I didn't come up with anything. Try asking again?"),
+      message: result.text || (actions.length ? "Here's what I'd suggest:" : "I didn't come up with anything. Try asking again?"),
       actions: actions.length ? actions : null,
-      sources: [...sources].slice(0, 8).map(([url, title]) => ({ url, title })),
+      sources: [...result.sources].slice(0, 8).map(([url, title]) => ({ url, title })),
     });
   } catch (err) {
-    if (err instanceof Anthropic.RateLimitError) {
-      return json({ error: 'The AI service is busy right now. Try again in a moment.' }, 429);
-    }
-    if (err instanceof Anthropic.APIError) {
-      return json({ error: `AI service error ${err.status ?? ''}: ${err.message}` }, 502);
-    }
+    const apiError = anthropicErrorResponse(err);
+    if (apiError) return json({ error: apiError.error }, apiError.status);
     return json({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
   }
 });

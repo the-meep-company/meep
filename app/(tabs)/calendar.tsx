@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
-import { useAuthStore } from '@/stores/authStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useSyncStore } from '@/stores/syncStore';
-import { performSync } from '@/lib/googleCalendar';
+import { syncGoogleNow } from '@/lib/googleCalendar';
 import { useTaskStore } from '@/stores/taskStore';
 import { usePatternStore } from '@/stores/patternStore';
 import { detectConflictingTasks, autoScheduleTasks } from '@/lib/scheduler';
@@ -20,16 +19,8 @@ import type { CalendarEvent, ReorganizePlacement, Task } from '@/types';
 
 export default function CalendarScreen() {
   const { theme } = useThemeStore();
-  const { googleToken } = useAuthStore();
-  const { currentView, events, getEventsForRange, updateEvent, batchUpsertEvents } = useCalendarStore();
-  const {
-    googleCalendars,
-    selectedCalendarIds,
-    syncState,
-    setSyncing,
-    setSyncError,
-    setLastSync,
-  } = useSyncStore();
+  const { currentView, events, getEventsForRange, updateEvent } = useCalendarStore();
+  const { selectedCalendarIds, syncState } = useSyncStore();
   const { tasks, updateTask } = useTaskStore();
   const { patterns } = usePatternStore();
 
@@ -41,33 +32,10 @@ export default function CalendarScreen() {
   const [reorganizePlacements, setReorganizePlacements] = useState<ReorganizePlacement[]>([]);
   const [reorganizeUnplaceable, setReorganizeUnplaceable] = useState<{ task: Task; reason: string }[]>([]);
 
-  // Persist sync tokens in a ref (survives re-renders, reset on unmount)
-  const syncTokensRef = useRef<Record<string, string>>({});
-
-  // Auto-sync on mount when Google is connected
+  // Freshen Google on mount; the server also syncs every 10 minutes.
   useEffect(() => {
-    const isConnected = googleCalendars.length > 0 && selectedCalendarIds.length > 0;
-    if (!isConnected || syncState.isSyncing || !googleToken) return;
-
-    performSync({
-      accessToken: googleToken ?? '',
-      googleCalendars,
-      selectedCalendarIds,
-      syncTokens: syncTokensRef.current,
-      existingEvents: events,
-      onSyncStart: () => setSyncing(true),
-      onSyncSuccess: (nextTokens) => {
-        syncTokensRef.current = { ...syncTokensRef.current, ...nextTokens };
-        setSyncing(false);
-        setLastSync(new Date());
-      },
-      onSyncError: (err) => {
-        setSyncing(false);
-        setSyncError(err);
-      },
-      batchUpsertEvents,
-      setLastSync,
-    });
+    if (selectedCalendarIds.length === 0 || syncState.isSyncing) return;
+    syncGoogleNow();
     // Run once on mount only — dependency array intentionally empty
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

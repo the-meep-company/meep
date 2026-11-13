@@ -18,24 +18,21 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCalendarStore } from '@/stores/calendarStore';
-import { fetchGoogleCalendars, performSync } from '@/lib/googleCalendar';
+import { disconnectGoogle, loadGoogleCalendars, syncGoogleNow } from '@/lib/googleCalendar';
 import { decorative, hitSlopFor, a11yState } from '@/lib/accessibility';
 
 export default function GoogleCalendarScreen() {
   const router = useRouter();
   const { theme } = useThemeStore();
-  const { googleToken, signInWithGoogle } = useAuthStore();
-  const accessToken = googleToken;
+  const { signInWithGoogle } = useAuthStore();
 
   const {
     googleCalendars,
     syncState,
     selectedCalendarIds,
     toggleCalendarSync,
-    setSyncing,
+    toggleBotsCanWrite,
     setSyncError,
-    setLastSync,
-    clearSync,
   } = useSyncStore();
 
   const { events, batchUpsertEvents } = useCalendarStore();
@@ -43,20 +40,11 @@ export default function GoogleCalendarScreen() {
   const isConnected = googleCalendars.length > 0;
   const { isSyncing, lastSyncAt, syncError } = syncState;
 
-  // Persist sync tokens across syncs (useRef so they survive re-renders)
-  const syncTokensRef = useRef<Record<string, string>>({});
-
-  // Auto-fetch calendars whenever we have a token but haven't loaded calendars yet.
-  // This covers two cases:
-  //  1. User logged in with Google on the login screen (redirect flow) and lands here
-  //  2. User clicked Connect on this screen, was redirected to Google, and came back
+  // The server owns the calendar list; refresh it whenever this screen opens.
   useEffect(() => {
-    if (googleToken && googleCalendars.length === 0) {
-      fetchGoogleCalendars(googleToken)
-        .then((calendars) => useSyncStore.getState().setGoogleCalendars(calendars))
-        .catch((e) => setSyncError(String(e)));
-    }
-  }, [googleToken]);
+    loadGoogleCalendars().catch((e) => setSyncError(String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Announce async sync/connection results to VoiceOver (Android/web use the
   // live regions below). Only fires on transitions, not on first render.
@@ -76,12 +64,10 @@ export default function GoogleCalendarScreen() {
 
   const handleConnect = async () => {
     try {
+      // On native this connects Google before returning; on web the page
+      // redirects and the auth listener connects on return.
       await signInWithGoogle();
-      const freshToken = useAuthStore.getState().googleToken;
-      if (freshToken) {
-        const calendars = await fetchGoogleCalendars(freshToken);
-        useSyncStore.getState().setGoogleCalendars(calendars);
-      }
+      await loadGoogleCalendars();
     } catch (e) {
       setSyncError(String(e));
     }
@@ -89,44 +75,18 @@ export default function GoogleCalendarScreen() {
 
   const handleSyncNow = async () => {
     if (!isConnected || isSyncing) return;
-
-    if (!accessToken) {
-      setSyncError('Google session expired. Please disconnect and reconnect.');
-      return;
-    }
-
-    await performSync({
-      accessToken,
-      googleCalendars,
-      selectedCalendarIds,
-      syncTokens: syncTokensRef.current,
-      existingEvents: events,
-      onSyncStart: () => setSyncing(true),
-      onSyncSuccess: (nextTokens) => {
-        syncTokensRef.current = { ...syncTokensRef.current, ...nextTokens };
-        setSyncing(false);
-        setLastSync(new Date());
-      },
-      onSyncError: (err) => {
-        setSyncing(false);
-        // Surface a helpful message for expired tokens
-        if (err.includes('401')) {
-          setSyncError('Google session expired. Please disconnect and reconnect to refresh your token.');
-        } else {
-          setSyncError(err);
-        }
-      },
-      batchUpsertEvents,
-      setLastSync,
-    });
+    await syncGoogleNow();
   };
 
   const handleDisconnect = () => {
-    const doDisconnect = () => {
-      // Remove Google-sourced events from calendarStore
-      const remaining = events.filter((e) => e.source !== 'google');
-      batchUpsertEvents(remaining, []);
-      clearSync();
+    const doDisconnect = async () => {
+      try {
+        await disconnectGoogle();
+        // The server removes them too; drop them here so the calendar updates at once.
+        batchUpsertEvents([], events.filter((e) => e.source === 'google').map((e) => e.id));
+      } catch (e) {
+        setSyncError(String(e));
+      }
     };
 
     if (Platform.OS === 'web') {
@@ -332,6 +292,23 @@ export default function GoogleCalendarScreen() {
                   thumbColor={selectedCalendarIds.includes(cal.id) ? theme.colors.onPrimary : undefined}
                 />
               </View>
+              {selectedCalendarIds.includes(cal.id) && (
+                <View style={[styles.cardRow, styles.botsRow, { borderTopColor: theme.colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.botsTitle, { color: theme.colors.text }]}>Bots can edit</Text>
+                    <Text style={[styles.cardSub, { color: theme.colors.textSecondary }]}>
+                      Let your bots add and move blocks here
+                    </Text>
+                  </View>
+                  <Switch
+                    value={cal.botsCanWrite}
+                    onValueChange={() => toggleBotsCanWrite(cal.id)}
+                    accessibilityLabel={`Let bots edit ${cal.summary}`}
+                    trackColor={{ true: theme.colors.primary }}
+                    thumbColor={cal.botsCanWrite ? theme.colors.onPrimary : undefined}
+                  />
+                </View>
+              )}
             </View>
           ))}
         </>
@@ -341,7 +318,7 @@ export default function GoogleCalendarScreen() {
       <View style={styles.infoBox}>
         <FontAwesome name="info-circle" size={13} color={theme.colors.textTertiary} {...decorative} />
         <Text style={[styles.infoText, { color: theme.colors.textTertiary }]}>
-          Google Calendar events are read-only in Meep v1. To edit them, open Google Calendar directly.
+          Changes you make to Google events in Meep are saved to Google. Bots only touch calendars you let them edit.
         </Text>
       </View>
     </ScrollView>
@@ -404,6 +381,15 @@ const styles = StyleSheet.create({
   calendarId: {
     fontSize: 11,
     marginTop: 2,
+  },
+  botsRow: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  botsTitle: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   calendarSwatch: {
     width: 32,
