@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-import { syncAll, pushSettings } from '@/lib/sync';
+import { syncAll, pushSettings, pullFeed } from '@/lib/sync';
+import { seedStarterBots } from '@/lib/bots';
 import { connectGoogle, loadGoogleCalendars } from '@/lib/googleCalendar';
 import { subscribeToChanges, unsubscribeFromChanges } from '@/lib/realtime';
 import { useCalendarStore } from './calendarStore';
@@ -11,6 +12,7 @@ import { useGoalStore } from './goalStore';
 import { useSettingsStore } from './settingsStore';
 import { useThemeStore } from './themeStore';
 import { useMeepleStore } from './meepleStore';
+import { useFeedStore } from './feedStore';
 import { AppState, Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -236,6 +238,7 @@ async function performSync(userId: string) {
     useGoalStore.getState().setGoals(merged.goals);
     useMeepleStore.getState().setMeeples(merged.meeples);
     loadGoogleCalendars().catch(() => {});
+    pullFeed(userId).then((items) => useFeedStore.getState().setItems(items)).catch(() => {});
 
     // Apply remote settings if they exist
     if (merged.settings) {
@@ -259,6 +262,9 @@ async function performSync(userId: string) {
         theme: themeName,
       });
     }
+
+    // After settings exist remotely, so the seeded list has a row to live on.
+    await seedStarterBots(userId);
   } catch (err) {
     console.warn('[sync] Initial sync failed:', err);
   }

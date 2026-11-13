@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { addToQueue, flushQueue } from './syncQueue';
-import type { CalendarEvent, Task, Habit, Goal, Meeple, MeepleMessage } from '@/types';
+import type { BotRun, CalendarEvent, FeedItem, Task, Habit, Goal, Meeple, MeepleMessage } from '@/types';
 
 // ===== Type mappings (camelCase ↔ snake_case) =====
 
@@ -101,8 +101,38 @@ interface DbMeeple {
   web_search: boolean;
   schedule_access: boolean;
   unread: boolean;
+  kind: Meeple['kind'];
+  schedule: string | null;
+  trigger: Meeple['trigger'] | null;
+  trust: Meeple['trust'];
+  scope: Meeple['scope'];
+  enabled: boolean;
+  push_enabled: boolean;
+  template: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface DbFeedItem {
+  id: string;
+  meeple_id: string;
+  type: FeedItem['type'];
+  title: string;
+  body: string | null;
+  payload: { summary?: string; changes?: FeedItem['changes']; day?: string };
+  status: FeedItem['status'];
+  dry_run: boolean;
+  applied_at: string | null;
+  created_at: string;
+}
+
+interface DbBotRun {
+  id: string;
+  meeple_id: string;
+  status: BotRun['status'];
+  trigger: BotRun['trigger'];
+  error: string | null;
+  started_at: string;
 }
 
 interface DbMeepleMessage {
@@ -293,6 +323,14 @@ function toDbMeeple(meeple: Meeple, userId: string): DbMeeple {
     web_search: meeple.webSearch,
     schedule_access: meeple.scheduleAccess,
     unread: meeple.unread,
+    kind: meeple.kind,
+    schedule: meeple.schedule ?? null,
+    trigger: meeple.trigger ?? null,
+    trust: meeple.trust,
+    scope: meeple.scope,
+    enabled: meeple.enabled,
+    push_enabled: meeple.pushEnabled,
+    template: meeple.template ?? null,
     created_at: new Date(meeple.createdAt).toISOString(),
     updated_at: new Date(meeple.updatedAt).toISOString(),
   };
@@ -309,9 +347,68 @@ export function fromDbMeeple(row: DbMeeple): Omit<Meeple, 'messages'> {
     webSearch: row.web_search,
     scheduleAccess: row.schedule_access,
     unread: row.unread,
+    kind: row.kind,
+    schedule: row.schedule ?? undefined,
+    trigger: row.trigger ?? undefined,
+    trust: row.trust,
+    scope: row.scope ?? [],
+    enabled: row.enabled,
+    pushEnabled: row.push_enabled,
+    template: row.template ?? undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
+}
+
+export function fromDbFeedItem(row: DbFeedItem): FeedItem {
+  return {
+    id: row.id,
+    meepleId: row.meeple_id,
+    type: row.type,
+    title: row.title,
+    body: row.body ?? undefined,
+    summary: row.payload?.summary,
+    changes: row.payload?.changes ?? [],
+    day: row.payload?.day,
+    status: row.status,
+    dryRun: row.dry_run,
+    appliedAt: row.applied_at ? new Date(row.applied_at) : undefined,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+export function fromDbBotRun(row: DbBotRun): BotRun {
+  return {
+    id: row.id,
+    meepleId: row.meeple_id,
+    status: row.status,
+    trigger: row.trigger,
+    error: row.error ?? undefined,
+    startedAt: new Date(row.started_at),
+  };
+}
+
+/** The latest feed items, newest first. Feed and runs are read-only on the device. */
+export async function pullFeed(userId: string): Promise<FeedItem[]> {
+  const { data, error } = await supabase
+    .from('feed_items')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(60);
+  if (error) throw error;
+  return (data || []).map((r) => fromDbFeedItem(r as DbFeedItem));
+}
+
+export async function pullBotRuns(meepleId: string): Promise<BotRun[]> {
+  const { data, error } = await supabase
+    .from('bot_runs')
+    .select('id, meeple_id, status, trigger, error, started_at')
+    .eq('meeple_id', meepleId)
+    .order('started_at', { ascending: false })
+    .limit(15);
+  if (error) throw error;
+  return (data || []).map((r) => fromDbBotRun(r as DbBotRun));
 }
 
 function toDbMeepleMessage(msg: MeepleMessage, meepleId: string, userId: string): DbMeepleMessage {

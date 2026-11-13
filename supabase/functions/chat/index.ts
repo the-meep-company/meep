@@ -11,6 +11,7 @@ function buildSystemPrompt(
     todayEvents: { id: string; title: string; startTime: string; endTime: string }[];
     todayTasks: { id: string; title: string; status: string; priority: number; dueDate?: string }[];
     upcomingEvents: { id: string; title: string; startTime: string; endTime: string }[];
+    bots?: { id: string; name: string; role: string; pendingProposals: string[] }[];
   }
 ): string {
   const personaTone =
@@ -32,6 +33,18 @@ function buildSystemPrompt(
     ? `Upcoming events (next 3 days):\n${context.upcomingEvents.map((e) => `- [${e.id}] ${e.title}: ${e.startTime} to ${e.endTime}`).join('\n')}`
     : 'No upcoming events in the next 3 days.';
 
+  const bots = context.bots ?? [];
+  const botsSection = bots.length
+    ? `The user's bots (small helpers that work on their calendar; ids in brackets):\n${bots
+        .map(
+          (b) =>
+            `- [${b.id}] ${b.name}, ${b.role}${
+              b.pendingProposals.length ? `. Waiting for the user on: ${b.pendingProposals.map((p) => `"${p}"`).join(', ')}` : ''
+            }`
+        )
+        .join('\n')}`
+    : '';
+
   return `You are ${companionName}, an AI calendar companion.
 Current date: ${currentDate}. User's timezone: ${timezone}.
 ${personaTone}
@@ -42,7 +55,7 @@ ${eventsSection}
 ${tasksSection}
 
 ${upcomingSection}
-
+${botsSection ? `\n${botsSection}\n` : ''}
 You can have a natural conversation with the user about their schedule, productivity, and time management. You can also propose actions to modify their calendar or tasks.
 
 When you want to propose an action, include it in the "actions" array of your JSON response. Supported action types:
@@ -52,6 +65,7 @@ When you want to propose an action, include it in the "actions" array of your JS
 3. "delete_event" - params: { eventId }
 4. "create_task" - params: { title, priority? (1-4), dueDate? (ISO), estimatedMinutes?, description? }
 5. "complete_task" - params: { taskId } (use the [id] from the tasks above)
+6. "handoff" - params: { meepleId, message } — pass the user's request to one of their bots. Use this when the user is reacting to something a bot proposed (for example "push gym to the evening" while that bot is waiting on a plan for today), instead of making the change yourself. message is the request in the user's words. Keep your own reply to a short acknowledgement.
 
 Each action must include a "label" field with a short human-readable description of what it does (e.g. "Move 'Dentist' from 2pm to 3pm").
 

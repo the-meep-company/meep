@@ -185,7 +185,9 @@ export type ChatActionType =
   | 'delete_event'
   | 'create_event'
   | 'complete_task'
-  | 'create_task';
+  | 'create_task'
+  // Meep passes the user's message to a bot (params: meepleId, message).
+  | 'handoff';
 
 export interface ChatAction {
   type: ChatActionType;
@@ -284,7 +286,71 @@ export interface MeepleMessage extends ChatMessage {
   actionStatuses?: Record<number, 'accepted' | 'rejected'>;
 }
 
-export interface Meeple {
+// ===== Bots (meeples that run on their own) =====
+export type MeepleKind = 'chat' | 'scheduled' | 'triggered';
+export type BotTrust = 'ask' | 'ask_big' | 'auto';
+export type BotScope = 'read_calendar' | 'read_tasks' | 'propose_blocks' | 'write_blocks';
+export type BotTrigger =
+  | 'task.deadline_changed'
+  | 'task.created'
+  | 'block.skipped'
+  | 'block.overran'
+  | 'calendar.event_added';
+
+export interface BotFields {
+  kind: MeepleKind;
+  /** 5-field cron on the user's local clock, for scheduled bots. */
+  schedule?: string;
+  trigger?: BotTrigger;
+  trust: BotTrust;
+  scope: BotScope[];
+  enabled: boolean;
+  pushEnabled: boolean;
+  /** Which starter bot this is ('deadline', 'morning', ...), if any. */
+  template?: string;
+}
+
+export interface BotChange {
+  id: string;
+  kind: 'create' | 'move' | 'delete';
+  title: string;
+  reason: string;
+  event_id?: string;
+  before?: { start: string; end: string } | null;
+  after?: { start: string; end: string } | null;
+  applied?: boolean;
+  error?: string;
+}
+
+export type FeedItemType = 'proposal' | 'done' | 'insight';
+export type FeedItemStatus = 'pending' | 'approved' | 'dismissed' | 'applied' | 'undone';
+
+export interface FeedItem {
+  id: string;
+  meepleId: string;
+  type: FeedItemType;
+  title: string;
+  body?: string;
+  summary?: string;
+  changes: BotChange[];
+  /** Local day (YYYY-MM-DD) the changes are about. */
+  day?: string;
+  status: FeedItemStatus;
+  dryRun: boolean;
+  appliedAt?: Date;
+  createdAt: Date;
+}
+
+export interface BotRun {
+  id: string;
+  meepleId: string;
+  status: 'running' | 'done' | 'error' | 'skipped';
+  trigger: { type: string; event?: string };
+  error?: string;
+  startedAt: Date;
+}
+
+export interface Meeple extends BotFields {
   id: string;
   name: string;
   /** Short job title shown in the list, e.g. "Web scout". */

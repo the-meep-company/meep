@@ -2,6 +2,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { format } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { useMeepleStore } from '@/stores/meepleStore';
+import MeepleAvatar from '@/components/meeples/MeepleAvatar';
 import { decorative } from '@/lib/accessibility';
 import type { CalendarEvent } from '@/types';
 
@@ -19,6 +21,8 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
   const isHabit = event.isHabit === true;
   const isAiPlaced = event.scheduleSource === 'ai';
   const isGoogle = event.source === 'google';
+  // The bot that placed or last moved this block, shown as its little face.
+  const bot = useMeepleStore((s) => (event.botId ? s.meeples.find((m) => m.id === event.botId) : undefined));
 
 
   const label = [
@@ -27,6 +31,7 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
     isHabit ? 'recurring habit' : null,
     isAiPlaced && !isGoogle ? 'scheduled by AI' : null,
     isGoogle ? 'from Google Calendar' : null,
+    bot ? `placed by ${bot.name}` : null,
   ]
     .filter(Boolean)
     .join(', ');
@@ -61,8 +66,14 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
         >
           {event.title}
         </Text>
-        {isAiPlaced && !isGoogle && (
-          <FontAwesome name="magic" size={10} color={theme.colors.text} style={styles.aiIcon} {...decorative} />
+        {bot ? (
+          <View style={styles.aiIcon}>
+            <MeepleAvatar icon={bot.icon} glow={bot.glow} size={14} />
+          </View>
+        ) : (
+          isAiPlaced && !isGoogle && (
+            <FontAwesome name="magic" size={10} color={theme.colors.text} style={styles.aiIcon} {...decorative} />
+          )
         )}
         {isGoogle && (
           <FontAwesome name="google" size={10} color={event.color} style={styles.googleIcon} {...decorative} />
