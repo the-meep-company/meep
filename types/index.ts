@@ -324,6 +324,22 @@ export interface BotChange {
 }
 
 export type FeedItemType = 'proposal' | 'done' | 'insight';
+
+/** Minutes this week by category (computed server-side, _shared/weekly.ts). */
+export interface WeekSummaryRow {
+  category: string;
+  planned: number;
+  done: number;
+  skipped: number;
+  unchecked: number;
+  ahead: number;
+}
+export interface WeekSummary {
+  from: string;
+  to: string;
+  categories: WeekSummaryRow[];
+  total: Omit<WeekSummaryRow, 'category'>;
+}
 export type FeedItemStatus = 'pending' | 'approved' | 'dismissed' | 'applied' | 'undone';
 
 export interface FeedItem {
@@ -336,6 +352,8 @@ export interface FeedItem {
   changes: BotChange[];
   /** Local day (YYYY-MM-DD) the changes are about. */
   day?: string;
+  /** For a weekly insight: planned vs done by category. */
+  week?: WeekSummary;
   status: FeedItemStatus;
   dryRun: boolean;
   appliedAt?: Date;

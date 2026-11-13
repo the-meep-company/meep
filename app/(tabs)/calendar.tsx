@@ -145,6 +145,8 @@ export default function CalendarScreen() {
       )}
 
       <EventFormModal
+        // Remount per event so the form starts from that event, not the last one opened.
+        key={editingEvent?.id ?? selectedSlotDate?.toISOString() ?? 'new'}
         visible={showEventForm}
         initialDate={selectedSlotDate}
         editEvent={editingEvent}

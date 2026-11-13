@@ -2,8 +2,11 @@ import { admin } from './admin.ts';
 import { type Anthropic, runToolLoop, type ToolCall } from './anthropic.ts';
 import { userTimezone } from './gcalSync.ts';
 import { type EventRow, writeEvent } from './eventWrite.ts';
+import { suggestCategory } from './categories.ts';
 import { freeSlots, shortLocal, workBackFromDeadline } from './freeTime.ts';
+import { sendPush } from './push.ts';
 import { zonedYmd } from './time.ts';
+import { summarizeWeek, weekBounds, type WeekSummary } from './weekly.ts';
 
 // The bot runtime. A bot is a meeple with a kind (scheduled / triggered), a
 // trust level and a scope. Its only hands are the user's calendar: it reads
@@ -26,6 +29,7 @@ export interface BotRow {
   trust: Trust;
   scope: Scope[];
   enabled: boolean;
+  push_enabled: boolean;
   template: string | null;
 }
 
@@ -52,6 +56,8 @@ export interface StoredChange {
   /** The event changed, or created once applied. */
   event_id?: string;
   task_id?: string;
+  /** For create: the new block's category. */
+  category?: string | null;
   /** Google calendar a new block goes into (null: Meep only). */
   google_calendar_id?: string | null;
   before?: { start: string; end: string } | null;
@@ -71,6 +77,11 @@ export interface FeedPayload {
   day?: string;
 }
 
+/** An insight's payload: the week it's about, when the bot looked at one. */
+export interface InsightPayload {
+  week?: WeekSummary;
+}
+
 // Models: planning-heavy bots get the deep model, frequent ones the fast one.
 const DEEP_MODEL = Deno.env.get('BOT_MODEL_DEEP') ?? 'claude-opus-5-5';
 const FAST_MODEL = Deno.env.get('BOT_MODEL_FAST') ?? 'claude-sonnet-5-5';
@@ -85,6 +96,8 @@ const DAY_PLAN_PROMPTS: Record<string, (today: string) => string> = {
   drift: (today) =>
     `You keep today (${today}) workable when a block drifts: it was skipped, or it ran past its end without being checked off (the user may still be on it). Rework the rest of today from now on so it still fits: move what the drift pushes out, or give a skipped block's work a later slot today, into the free time that's left. Skipped blocks' time is free. Move as little as you can, keep events with guests and read-only events where they are, and submit the whole reworked day in one submit_changes call. If the rest of today still works, change nothing. If something won't fit today, leave it and say so in a sentence. Never point at what didn't happen: no "missed", no "behind", just where things are now.`,
 };
+const WEEKLY_PROMPT =
+  'You look back over the week. Call week_summary for this week first: its numbers are exact, so quote them rather than adding things up yourself (minutes; say hours where it reads better). Then call report once. Title: one plain line on how the week went by time, e.g. "14h planned, 11h done". Body: two to four sentences: where the time went by category, how planned compared with what was checked off, and at most one pattern worth noticing or one small idea for next week. Unchecked time is unknown, not failed; skipped time is a choice, not a miss. Change nothing.';
 const isDayPlan = (bot: BotRow) => Object.hasOwn(DAY_PLAN_PROMPTS, bot.template ?? '');
 
 /** Time that's taken: timed events, except blocks the user skipped. */
@@ -110,6 +123,7 @@ export interface BotContext {
     estimated_minutes: number | null;
     priority: number;
     status: string;
+    category?: string | null;
   }[];
   /** Where new blocks go: the primary bot-writable Google calendar, else Meep only. */
   newBlockCalendar: string | null;
@@ -128,7 +142,7 @@ async function loadContext(userId: string): Promise<BotContext> {
       .order('start_time'),
     admin
       .from('tasks')
-      .select('id, title, due_date, estimated_minutes, priority, status')
+      .select('id, title, due_date, estimated_minutes, priority, status, category')
       .eq('user_id', userId)
       .neq('status', 'done')
       .is('parent_task_id', null)
@@ -242,6 +256,7 @@ function systemPrompt(bot: BotRow, ctx: BotContext, triggerText: string, feed: s
   if (bot.scope.includes('read_tasks')) parts.push(`Open tasks:\n${describeTasks(ctx)}`);
   parts.push(`Your recent feed items:\n${feed}`);
   if (isDayPlan(bot)) parts.push(DAY_PLAN_PROMPTS[bot.template!](zonedYmd(ctx.now, ctx.tz)));
+  if (bot.template === 'weekly') parts.push(WEEKLY_PROMPT);
 
   if (canChange) {
     parts.push(
@@ -292,6 +307,16 @@ function toolsFor(bot: BotRow, chat: boolean): Anthropic.Beta.BetaToolUnion[] {
             min_minutes: { type: 'integer' },
           },
           required: ['from', 'to'],
+        },
+      },
+      {
+        name: 'week_summary',
+        description:
+          'Exact minutes this week (or last), by category: planned, done, skipped, unchecked (started, never checked off) and still ahead. Weeks run Monday to Monday, local time.',
+        input_schema: {
+          type: 'object',
+          properties: { week: { type: 'string', enum: ['this', 'last'] } },
+          required: ['week'],
         },
       },
       {
@@ -402,6 +427,7 @@ export function validate(
         title: c.title.trim(),
         reason: c.reason,
         task_id: c.task_id,
+        category: suggestCategory(c.title, { taskCategory: ctx.tasks.find((t) => t.id === c.task_id)?.category }),
         google_calendar_id: ctx.newBlockCalendar,
         before: null,
         after: { start: new Date(s).toISOString(), end: new Date(e).toISOString() },
@@ -488,6 +514,7 @@ export async function applyChange(bot: Pick<BotRow, 'id' | 'name' | 'user_id'>, 
             is_habit: false,
             google_calendar_id: c.google_calendar_id ?? null,
             task_id: c.task_id ?? null,
+            category: c.category ?? null,
             bot_id: bot.id,
           },
           extendedProperties: { meepBot: bot.id },
@@ -648,8 +675,9 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
     const today = zonedYmd(ctx.now, ctx.tz);
     let submitted: { summary: string; changes: StoredChange[] } | null = null;
     const reports: { title: string; body: string }[] = [];
+    let week: WeekSummary | undefined;
 
-    const onToolCall = (call: ToolCall): string => {
+    const onToolCall = async (call: ToolCall): Promise<string> => {
       const input = call.input as Record<string, any>;
       if (call.name === 'find_free_time') {
         const busy = busyTimes(ctx);
@@ -667,6 +695,18 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
           blocks: plan.blocks.map((b) => ({ start: b.start.toISOString(), end: b.end.toISOString(), minutes: b.minutes, local: shortLocal(b.start, ctx.tz) })),
           unplaced_minutes: plan.short,
         });
+      }
+      if (call.name === 'week_summary') {
+        const bounds = weekBounds(ctx.now, ctx.tz, input.week === 'last' ? 1 : 0);
+        const { data, error: e } = await admin
+          .from('events')
+          .select('title, start_time, end_time, all_day, has_guests, status, category')
+          .eq('user_id', bot.user_id)
+          .lt('start_time', bounds.end.toISOString())
+          .gt('end_time', bounds.start.toISOString());
+        if (e) return `Couldn't read the week: ${e.message}`;
+        week = summarizeWeek(data ?? [], ctx.now, bounds);
+        return JSON.stringify(week);
       }
       if (call.name === 'submit_changes') {
         const { changes, problems } = validate((input.changes ?? []) as BlockChange[], ctx, dayPlan ? today : undefined);
@@ -753,7 +793,16 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
     for (const r of reports) {
       const { data } = await admin
         .from('feed_items')
-        .insert({ user_id: bot.user_id, meeple_id: bot.id, run_id: run.id, type: 'insight', title: r.title, body: r.body, dry_run: dryRun })
+        .insert({
+          user_id: bot.user_id,
+          meeple_id: bot.id,
+          run_id: run.id,
+          type: 'insight',
+          title: r.title,
+          body: r.body,
+          payload: (week ? { week } : {}) satisfies InsightPayload,
+          dry_run: dryRun,
+        })
         .select('id')
         .single();
       if (data) feedItemIds.push(data.id);
@@ -767,6 +816,14 @@ export async function runBot(bot: BotRow, trigger: RunTrigger): Promise<RunResul
       replyMessageId = await postToThread(bot, reply, false);
     } else if (feedItemIds.length) {
       await postToThread(bot, reply || sub?.summary || 'Left something in your feed.', background);
+    }
+
+    // One quiet notification per background run, for bots the user opted in.
+    if (background && bot.push_enabled && feedItemIds.length) {
+      const title = sub?.summary ?? reports[0]?.title ?? 'Left something in your feed';
+      await sendPush(bot.user_id, bot.name, title, { feedItemId: feedItemIds[0] }).catch((err) =>
+        console.warn('[bots] push failed:', err)
+      );
     }
 
     await finish({

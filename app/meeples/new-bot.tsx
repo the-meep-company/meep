@@ -48,7 +48,6 @@ export default function NewBotScreen() {
       glow: pick(GLOWS),
       webSearch: false,
       scheduleAccess: true,
-      pushEnabled: false,
       ...settings,
     });
     previewBot(id);

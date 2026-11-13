@@ -10,6 +10,7 @@ import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type CalendarEvent } from '@/types';
 import { useReduceMotion, hitSlopFor, a11yState } from '@/lib/accessibility';
 import { canRunOver, canSkip, hasStarted, markRunningOver, setEventStatus } from '@/lib/eventStatus';
+import { CATEGORY_LABELS, EVENT_CATEGORIES, isEventCategory, suggestCategory, type EventCategory } from '@/lib/categories';
 
 // Spoken names for the swatches in EVENT_COLORS (screen readers can't describe a hex).
 const COLOR_NAMES: Record<string, string> = {
@@ -58,6 +59,14 @@ export default function EventFormModal({
   const [selectedColor, setSelectedColor] = useState(
     editEvent?.color ?? EVENT_COLORS[0]
   );
+  // undefined until the user picks; until then the category follows the title.
+  const [pickedCategory, setPickedCategory] = useState<EventCategory | null | undefined>(undefined);
+  const category =
+    pickedCategory !== undefined
+      ? pickedCategory
+      : isEventCategory(editEvent?.category)
+      ? editEvent.category
+      : suggestCategory(title, { hasGuests: editEvent?.hasGuests });
 
   const handleSave = () => {
     if (!title.trim()) return;
@@ -73,6 +82,7 @@ export default function EventFormModal({
         startTime,
         endTime,
         color: selectedColor,
+        category: category ?? undefined,
       });
     } else {
       const newEvent: CalendarEvent = {
@@ -83,6 +93,7 @@ export default function EventFormModal({
         endTime,
         allDay: false,
         color: selectedColor,
+        category: category ?? undefined,
         source: 'local',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -117,6 +128,7 @@ export default function EventFormModal({
     setTitle('');
     setDescription('');
     setSelectedColor(EVENT_COLORS[0]);
+    setPickedCategory(undefined);
     onClose();
   };
 
@@ -306,6 +318,37 @@ export default function EventFormModal({
               </View>
             </View>
 
+            <Text
+              accessibilityRole="header"
+              style={[styles.label, { color: theme.colors.textSecondary }]}
+            >
+              Category
+            </Text>
+            <View style={styles.chipRow} accessibilityRole="radiogroup" accessibilityLabel="Category">
+              {EVENT_CATEGORIES.map((c) => {
+                const selected = category === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    onPress={() => setPickedCategory(selected ? null : c)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={CATEGORY_LABELS[c]}
+                    {...a11yState({ checked: selected })}
+                    style={[
+                      styles.chip,
+                      selected
+                        ? { backgroundColor: theme.colors.primary }
+                        : { borderWidth: 1, borderColor: theme.colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.chipText, { color: selected ? theme.colors.onPrimary : theme.colors.text }]}>
+                      {CATEGORY_LABELS[c]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {checkOff.length > 0 && (
               <>
                 <Text
@@ -314,7 +357,7 @@ export default function EventFormModal({
                 >
                   Check off
                 </Text>
-                <View style={styles.checkRow}>
+                <View style={styles.chipRow}>
                   {checkOff.map((o) => (
                     <TouchableOpacity
                       key={o.key}
@@ -323,7 +366,7 @@ export default function EventFormModal({
                       accessibilityLabel={o.label}
                       {...a11yState(o.key === 'over' ? undefined : { pressed: o.selected })}
                       style={[
-                        styles.checkChip,
+                        styles.chip,
                         o.selected
                           ? { backgroundColor: theme.colors.primary }
                           : { borderWidth: 1, borderColor: theme.colors.border },
@@ -331,7 +374,7 @@ export default function EventFormModal({
                     >
                       <Text
                         style={[
-                          styles.checkChipText,
+                          styles.chipText,
                           { color: o.selected ? theme.colors.onPrimary : theme.colors.text },
                         ]}
                       >
@@ -476,20 +519,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     paddingHorizontal: 8,
   },
-  checkRow: {
+  chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 20,
   },
-  checkChip: {
+  chip: {
     height: 34,
     paddingHorizontal: 14,
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkChipText: {
+  chipText: {
     fontSize: 14,
     fontWeight: '500',
   },

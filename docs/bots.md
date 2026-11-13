@@ -18,7 +18,7 @@ meeples are `chat`). The bot fields are:
 | `trigger` | `task.deadline_changed`, `task.created`, `block.skipped`, `block.overran`, `block.drifted` (either of the two before it), `calendar.event_added` |
 | `trust` | `ask`: only proposes. `ask_big`: applies moves under 2h on the same day, proposes the rest. `auto`: applies everything and reports. Default `ask`. |
 | `scope` | `read_calendar`, `read_tasks`, `propose_blocks`, `write_blocks`. With neither of the last two, a bot is read-only and can only report. |
-| `enabled`, `push_enabled`, `template` | Whether it runs on its own, whether it may push (not yet used), and which starter it came from, if any |
+| `enabled`, `push_enabled`, `template` | Whether it runs on its own, whether it sends a notification when a background run leaves something in the feed ("Notify me"), and which starter it came from, if any |
 | `next_run_at` | Set by bot-tick. It is reset to null whenever the schedule changes, so the next tick picks up the new time. |
 
 Tables:
@@ -31,6 +31,7 @@ Tables:
 - `bot_events`: the trigger queue. Postgres triggers on `tasks` and `events` fill it, but only when the user has an enabled bot listening (`bot_listens`).
 - `app_config`: holds the `bots_paused` kill switch.
 - `ops_alerts`: one alert per user per day.
+- `push_tokens`: Expo push tokens, one per device, written only through `register_push_token` / `unregister_push_token` so a device follows whoever signed in last.
 
 ### A run (`supabase/functions/_shared/bots.ts`)
 1. **Start.** `bot-tick` runs every 5 minutes via pg_cron. It starts scheduled bots that are due and triggered bots with queued events, sending each run through `pg_net` to `run-bot`. The app calls `run-bot` directly for chat turns, "Run now", and the dry run after creating or editing a bot.
@@ -40,11 +41,13 @@ Tables:
    - the bot's recent feed items
 3. **Model call.** Claude only gets tools that match the bot's scope:
    - `find_free_time` and `suggest_focus_blocks`, which wrap `_shared/freeTime.ts`
+   - `week_summary`, which wraps `_shared/weekly.ts`
    - `submit_changes`
    - `report`
 4. **Validation.** `submit_changes` checks for writable events, no overlaps, nothing in the past, and blocks between 10 minutes and 8 hours. If anything fails, the problems go back to the model so it can resubmit.
 5. **Trust.** Trust decides what happens to each change. Applied changes go through `writeEvent(..., 'bot')` and become a `done` item; everything else becomes a `proposal`. New blocks go into the primary calendar the bots can write to (tagged `extendedProperties.private.meepBot`), or stay Meep-only if there isn't one.
 6. **Feed and thread.** The bot leaves a line in its thread only when it actually did something. Chat turns always reply.
+7. **Push.** If the bot has `push_enabled` and a background run left something in the feed, `_shared/push.ts` sends one notification through Expo's push service: no sound, no badge, and not shown while the app is open. Tapping it opens the feed.
 
 `feed-action` handles approve (all or some changes, optionally with new times
 from tweaking), dismiss and undo. Approving re-checks the changes against the
@@ -96,6 +99,18 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
     events and habits are never flagged.
   - A skipped block's time counts as free for every bot.
   - Copy stays neutral: "moved Essay to 3pm", never "missed".
+- **Weekly bot** (scheduled, Sunday 18:00 local, read-only, off until the user
+  turns it on) looks back over the week as one insight.
+  - `week_summary` computes planned vs actual minutes by category for the local
+    Monday-to-Monday week: done, skipped, unchecked (started, never checked off)
+    and still ahead. The model only narrates those numbers, and the card draws
+    them as bars (`components/feed/WeekBars.tsx`, from `payload.week`).
+  - Categories are a fixed set (`_shared/categories.ts`, re-exported by
+    `lib/categories.ts`): work, study, health, social, admin, personal. New events
+    get a guess from their title (`suggestCategory`), bot blocks take their task's
+    category, and the user can change it in the event form. Events with no
+    category are guessed at when the week is summed, or count as "everything
+    else".
 
 ## Adding a fifth bot
 1. Add it to `STARTER_BOTS` in `lib/bots.ts`:
@@ -176,7 +191,12 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
    ```
 5. Bot secrets:
    - `DISCORD_OPS_WEBHOOK_URL`: a webhook for #overly-productive-meeple
+   - optional: `EXPO_ACCESS_TOKEN`, if push security is turned on for the Expo project
    - `BOTS_PAUSE_SECRET`: any long random string
    - optional: `BOT_MODEL_DEEP` (default `claude-opus-5-5`) and `BOT_MODEL_FAST` (default `claude-sonnet-5-5`)
-6. Existing Google users need to sign in with Google once more so the server gets
+6. Push needs an EAS project id: run `eas init` once, which writes
+   `extra.eas.projectId` to the app config. Without it the app skips
+   registering for notifications (and says so in the console). iOS push also
+   needs a paid Apple team, like App Groups.
+7. Existing Google users need to sign in with Google once more so the server gets
    a refresh token. Until they do, Settings → Google Calendar shows "Connect".

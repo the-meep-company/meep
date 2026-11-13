@@ -9,12 +9,13 @@ import {
   canChangeCalendar, formatTime, fromCron, toCron, type SchedulePreset, type ScheduleSpec,
 } from '@/lib/bots';
 import { a11yState } from '@/lib/accessibility';
+import { registerForPush } from '@/lib/push';
 import type { BotFields } from '@/types';
 
 // The "when / how much to trust it / what it may touch" part of a bot, shared by
 // the new-bot screen and the edit screen.
 
-export type BotSettings = Pick<BotFields, 'kind' | 'schedule' | 'trigger' | 'trust' | 'scope' | 'enabled'>;
+export type BotSettings = Pick<BotFields, 'kind' | 'schedule' | 'trigger' | 'trust' | 'scope' | 'enabled' | 'pushEnabled'>;
 
 export const DEFAULT_SCHEDULE: ScheduleSpec = { preset: 'weekdays', hour: 7, minute: 30, weekday: 0 };
 
@@ -24,6 +25,7 @@ export const NEW_BOT_SETTINGS: BotSettings = {
   trust: 'ask',
   scope: CHANGE_SCOPE,
   enabled: true,
+  pushEnabled: false,
 };
 
 const PRESETS: { value: SchedulePreset; label: string }[] = [
@@ -170,6 +172,16 @@ export default function BotSettingsForm({
             description={value.enabled ? 'Runs on its own' : 'Paused: only runs when you ask it to'}
             value={value.enabled}
             onValueChange={(enabled) => set({ enabled })}
+          />
+          <SettingsRow
+            kind="switch"
+            title="Notify me"
+            description="A quiet notification when it leaves something in your feed"
+            value={value.pushEnabled}
+            onValueChange={(pushEnabled) => {
+              set({ pushEnabled });
+              if (pushEnabled) registerForPush({ ask: true });
+            }}
           />
         </SettingsGroup>
       </View>

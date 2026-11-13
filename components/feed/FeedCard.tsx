@@ -10,6 +10,7 @@ import { feedAction, isDayPlan } from '@/lib/bots';
 import Card from '@/components/ui/Card';
 import MeepleAvatar from '@/components/meeples/MeepleAvatar';
 import MiniDayView from './MiniDayView';
+import WeekBars from './WeekBars';
 import { a11yState, decorative } from '@/lib/accessibility';
 import type { BotChange, FeedItem, Meeple } from '@/types';
 
@@ -99,6 +100,7 @@ export default function FeedCard({ item, bot, onReply }: Props) {
         {item.title}
       </Text>
       {item.body ? <Text style={[styles.body, { color: theme.colors.textSecondary }]}>{item.body}</Text> : null}
+      {item.week ? <WeekBars week={item.week} /> : null}
 
       {shown.length > 0 && item.type !== 'insight' && (
         <>

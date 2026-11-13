@@ -7,11 +7,11 @@ import type { BotScope, BotTrigger, BotTrust, FeedItem, Meeple } from '@/types';
 // server runs them (supabase/functions/run-bot); this file is the app's side:
 // starter bots, the schedule / trigger / trust vocabulary, and feed actions.
 
-export type StarterKey = 'deadline' | 'morning' | 'drift';
+export type StarterKey = 'deadline' | 'morning' | 'drift' | 'weekly';
 
 /**
  * Shipped with the app; created for every user on first sign-in, all on "Ask me".
- * Drift starts switched off: it only helps once the user checks blocks off.
+ * Drift and Weekly start switched off: both only help once the user checks blocks off.
  */
 export const STARTER_BOTS: Record<StarterKey, MeepleDraft & { kind: Meeple['kind'] }> = {
   deadline: {
@@ -64,6 +64,23 @@ export const STARTER_BOTS: Record<StarterKey, MeepleDraft & { kind: Meeple['kind
     enabled: false,
     pushEnabled: false,
     template: 'drift',
+  },
+  weekly: {
+    name: 'Weekly bot',
+    role: 'Looks back over your week on Sunday evening',
+    instructions:
+      "On Sunday evening, look back over my week: how much time went to each kind of thing, and how what I planned compares with what I checked off. Keep it to a few sentences, mention one pattern worth noticing if there is one, and don't change anything.",
+    icon: 'bar-chart',
+    glow: 'plum',
+    webSearch: false,
+    scheduleAccess: true,
+    kind: 'scheduled',
+    schedule: '0 18 * * 0',
+    trust: 'ask',
+    scope: ['read_calendar', 'read_tasks'],
+    enabled: false,
+    pushEnabled: false,
+    template: 'weekly',
   },
 };
 

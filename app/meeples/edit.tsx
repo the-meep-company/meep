@@ -64,6 +64,7 @@ export default function MeepleEditScreen() {
           trust: existing.trust,
           scope: existing.scope,
           enabled: existing.enabled,
+          pushEnabled: existing.pushEnabled,
         }
       : null
   );

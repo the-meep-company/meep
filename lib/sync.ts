@@ -119,7 +119,7 @@ interface DbFeedItem {
   type: FeedItem['type'];
   title: string;
   body: string | null;
-  payload: { summary?: string; changes?: FeedItem['changes']; day?: string };
+  payload: { summary?: string; changes?: FeedItem['changes']; day?: string; week?: FeedItem['week'] };
   status: FeedItem['status'];
   dry_run: boolean;
   applied_at: string | null;
@@ -370,6 +370,7 @@ export function fromDbFeedItem(row: DbFeedItem): FeedItem {
     summary: row.payload?.summary,
     changes: row.payload?.changes ?? [],
     day: row.payload?.day,
+    week: row.payload?.week,
     status: row.status,
     dryRun: row.dry_run,
     appliedAt: row.applied_at ? new Date(row.applied_at) : undefined,
