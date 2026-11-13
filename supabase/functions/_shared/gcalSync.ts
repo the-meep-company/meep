@@ -77,20 +77,23 @@ async function syncCalendar(userId: string, token: string, cal: CalendarRow, tz:
   // (with a Meep id) keep their id instead of getting a second row.
   const { data: existing, error } = await admin
     .from('events')
-    .select('id, google_event_id')
+    .select('id, google_event_id, google_etag')
     .eq('user_id', userId)
     .eq('google_calendar_id', cal.calendar_id);
   if (error) throw error;
-  const idByGoogleId = new Map((existing ?? []).map((r) => [r.google_event_id as string, r.id as string]));
+  const known = new Map((existing ?? []).map((r) => [r.google_event_id as string, r]));
 
   const upserts = [];
   const deletes: string[] = [];
   for (const ge of result.events) {
-    const id = idByGoogleId.get(ge.id);
+    const row = known.get(ge.id);
+    const id = row?.id as string | undefined;
     if (ge.status === 'cancelled') {
       if (id) deletes.push(id);
       continue;
     }
+    // Unchanged in Google: leave the row (and its updated_at) alone.
+    if (row && ge.etag && row.google_etag === ge.etag) continue;
     upserts.push({ id: id ?? googleRowId(userId, ge.id), ...googleEventToRow(userId, cal.calendar_id, cal.background_color, ge, tz) });
   }
 

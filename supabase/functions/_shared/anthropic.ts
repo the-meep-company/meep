@@ -15,6 +15,7 @@ export interface ToolLoopResult {
   /** Web pages cited in the reply, url → title. */
   sources: Map<string, string>;
   refused: boolean;
+  usage: { input: number; output: number };
 }
 
 /**
@@ -43,6 +44,7 @@ export async function runToolLoop({
   const text: string[] = [];
   const calls: ToolCall[] = [];
   const sources = new Map<string, string>();
+  const usage = { input: 0, output: 0 };
 
   for (let round = 0; round < maxRounds; round++) {
     const response = await anthropic.beta.messages.create({
@@ -56,8 +58,11 @@ export async function runToolLoop({
       ...(tools.length ? { tools } : {}),
     });
 
+    usage.input += response.usage.input_tokens;
+    usage.output += response.usage.output_tokens;
+
     if (response.stop_reason === 'refusal') {
-      return { text: '', calls, sources, refused: true };
+      return { text: '', calls, sources, refused: true, usage };
     }
 
     const uses: Anthropic.Beta.BetaToolUseBlock[] = [];
@@ -94,7 +99,7 @@ export async function runToolLoop({
     break;
   }
 
-  return { text: text.join('').replace(/\n{3,}/g, '\n\n').trim(), calls, sources, refused: false };
+  return { text: text.join('').replace(/\n{3,}/g, '\n\n').trim(), calls, sources, refused: false, usage };
 }
 
 /** Maps SDK errors to the HTTP responses the app already understands. */
