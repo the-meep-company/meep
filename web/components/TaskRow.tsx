@@ -17,9 +17,13 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
 };
 
 function dueLabel(due: Date, done: boolean): { text: string; overdue: boolean } {
+  // Compare calendar days, not hours: a task due at 6 PM today is still "Today".
+  // Both sides are local midnight, so rounding only absorbs DST's 23/25-hour days.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  const dueDay = new Date(due);
+  dueDay.setHours(0, 0, 0, 0);
+  const days = Math.round((dueDay.getTime() - today.getTime()) / 86_400_000);
   const text =
     days === 0
       ? "Today"
