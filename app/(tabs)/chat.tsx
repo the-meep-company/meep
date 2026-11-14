@@ -382,7 +382,7 @@ export default function MeepScreen() {
   }, []);
 
   return (
-    <GlassBackground style={styles.container}>
+    <GlassBackground style={styles.container} centered>
     {/* Keeps the inputs above the tab bar. Margin, not padding: KeyboardAvoidingView
         overwrites paddingBottom with the keyboard height. */}
     <KeyboardAvoidingView

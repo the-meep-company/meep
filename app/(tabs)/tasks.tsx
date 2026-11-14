@@ -262,7 +262,7 @@ export default function TasksScreen() {
   );
 
   return (
-    <GlassBackground style={styles.container}>
+    <GlassBackground style={styles.container} centered>
       <ScreenHeader
         left={<GlowAvatar initial={companionName || 'M'} />}
         right={
