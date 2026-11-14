@@ -35,14 +35,19 @@ function dueLabel(due: Date, done: boolean): { text: string; overdue: boolean } 
   return { text, overdue: days < 0 && !done };
 }
 
+export interface SubtaskCount {
+  done: number;
+  total: number;
+}
+
 interface Props {
   task: Task;
-  subtaskCount: number;
+  subtasks: SubtaskCount;
   onUpdate: (task: Task) => void;
   onDelete: (id: string) => void;
 }
 
-export default function TaskRow({ task, subtaskCount, onUpdate, onDelete }: Props) {
+export default function TaskRow({ task, subtasks, onUpdate, onDelete }: Props) {
   const [editing, setEditing] = useState(false);
   const done = task.status === "done";
   const due = task.dueDate ? dueLabel(task.dueDate, done) : null;
@@ -73,7 +78,12 @@ export default function TaskRow({ task, subtaskCount, onUpdate, onDelete }: Prop
             {task.category && (
               <span className="rounded bg-surface-2 px-1.5 py-0.5 text-foreground/80">{task.category}</span>
             )}
-            {subtaskCount > 0 && <span>{subtaskCount} subtask{subtaskCount > 1 ? "s" : ""}</span>}
+            {/* Same "done/total subtasks" wording as the app's TaskItem. */}
+            {subtasks.total > 0 && (
+              <span>
+                {subtasks.done}/{subtasks.total} subtasks
+              </span>
+            )}
           </span>
         </button>
       </div>
@@ -86,7 +96,8 @@ export default function TaskRow({ task, subtaskCount, onUpdate, onDelete }: Prop
           }}
           onCancel={() => setEditing(false)}
           onDelete={() => {
-            const extra = subtaskCount > 0 ? ` and its ${subtaskCount} subtask${subtaskCount > 1 ? "s" : ""}` : "";
+            const n = subtasks.total;
+            const extra = n > 0 ? ` and its ${n} subtask${n > 1 ? "s" : ""}` : "";
             if (window.confirm(`Delete "${task.title}"${extra}?`)) onDelete(task.id);
           }}
         />
