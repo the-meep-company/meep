@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { fromDbEvent, fromDbMeeple, fromDbMeepleMessage, fromDbTask } from './sync';
+import { fromDbEvent, fromDbMeeple, fromDbMeepleMessage } from './sync';
+import { fromDbTask } from './taskRows';
 import { loadGoogleCalendars } from './googleCalendar';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';

@@ -6,9 +6,10 @@ import { useThemeStore } from '@/stores/themeStore';
 import { NAV_GLASS, rimShadow } from '@/lib/glass';
 import { useReduceMotion, a11yState } from '@/lib/accessibility';
 import { GlassLayers, glassFrame } from '@/components/common/GlassCard';
+import { useWideLayout } from '@/lib/layout';
 
 // Tabs shown in the bar; other routes in the navigator are hidden template screens.
-const VISIBLE_TABS = ['calendar', 'tasks', 'chat', 'settings'];
+export const VISIBLE_TABS = ['calendar', 'tasks', 'chat', 'settings'];
 
 export const TAB_BAR_HEIGHT = 64;
 const PADDING = 5;
@@ -21,7 +22,23 @@ function useBottomOffset() {
 
 /** Bottom space a screen should leave so its last item can scroll clear of the bar. */
 export function useTabBarClearance() {
-  return useBottomOffset() + TAB_BAR_HEIGHT + 16;
+  const bottom = useBottomOffset();
+  // Desktop web uses the sidebar instead, so nothing floats over the content.
+  if (useWideLayout()) return 24;
+  return bottom + TAB_BAR_HEIGHT + 16;
+}
+
+/** Web: name the page after the active tab so screen readers announce where you are. */
+export function usePageTitle({ state, descriptors }: Pick<BottomTabBarProps, 'state' | 'descriptors'>) {
+  const focusedOptions = state.routes[state.index]
+    ? descriptors[state.routes[state.index].key]?.options
+    : undefined;
+  const pageTitle = typeof focusedOptions?.title === 'string' ? focusedOptions.title : null;
+  useEffect(() => {
+    if (Platform.OS === 'web' && pageTitle) {
+      document.title = pageTitle === 'Meep' ? 'Meep' : `${pageTitle} – Meep`;
+    }
+  }, [pageTitle]);
 }
 
 /**
@@ -61,16 +78,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
     }).start();
   }, [activeIndex, itemWidth, lensX, reduceMotion]);
 
-  // Web: name the page after the active tab so screen readers announce where you are.
-  const focusedOptions = state.routes[state.index]
-    ? descriptors[state.routes[state.index].key]?.options
-    : undefined;
-  const pageTitle = typeof focusedOptions?.title === 'string' ? focusedOptions.title : null;
-  useEffect(() => {
-    if (Platform.OS === 'web' && pageTitle) {
-      document.title = pageTitle === 'Meep' ? 'Meep' : `${pageTitle} – Meep`;
-    }
-  }, [pageTitle]);
+  usePageTitle({ state, descriptors });
 
   const inactive = tone === 'dark' ? 'rgba(255,255,255,0.74)' : 'rgba(0,0,0,0.6)';
   const active = theme.colors.tabBarActive;
