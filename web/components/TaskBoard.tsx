@@ -5,7 +5,9 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { fetchTasks, removeTask, saveTask, sortTasks, type Task } from "@/lib/tasks";
 import TaskComposer from "./TaskComposer";
-import TaskRow from "./TaskRow";
+import TaskRow, { type SubtaskCount } from "./TaskRow";
+
+const NO_SUBTASKS: SubtaskCount = { done: 0, total: 0 };
 
 type Filter = "all" | "todo" | "done";
 
@@ -77,9 +79,13 @@ export default function TaskBoard({ user }: { user: User }) {
 
   const topLevel = useMemo(() => (tasks ?? []).filter((t) => !t.parentTaskId), [tasks]);
   const subtaskCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+    const counts = new Map<string, SubtaskCount>();
     for (const t of tasks ?? []) {
-      if (t.parentTaskId) counts.set(t.parentTaskId, (counts.get(t.parentTaskId) ?? 0) + 1);
+      if (!t.parentTaskId) continue;
+      const c = counts.get(t.parentTaskId) ?? { done: 0, total: 0 };
+      c.total += 1;
+      if (t.status === "done") c.done += 1;
+      counts.set(t.parentTaskId, c);
     }
     return counts;
   }, [tasks]);
@@ -171,7 +177,7 @@ export default function TaskBoard({ user }: { user: User }) {
             <TaskRow
               key={task.id}
               task={task}
-              subtaskCount={subtaskCounts.get(task.id) ?? 0}
+              subtasks={subtaskCounts.get(task.id) ?? NO_SUBTASKS}
               onUpdate={updateTask}
               onDelete={deleteTask}
             />
