@@ -109,7 +109,7 @@ export default function LoginScreen() {
   return (
     <View style={styles.root}>
       <MeshBackground preset={EMBER} />
-      <GrainOverlay level="subtle" />
+      <GrainOverlay level={0.5} />
 
       <KeyboardAvoidingView
         style={styles.flex}

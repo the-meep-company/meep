@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -107,7 +108,7 @@ export default function CalendarScreen() {
       patterns,
       dateRange: { start: eventDay, end: windowEnd },
       workingHours: { startHour: 8, endHour: 21 },
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone: useSettingsStore.getState().timezone,
     });
 
     if (result.placements.length === 0 && result.unplaceable.length === 0) return;

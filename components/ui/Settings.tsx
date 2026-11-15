@@ -4,6 +4,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
 import { decorative, a11yState } from '@/lib/accessibility';
 import Card from './Card';
+import { SectionLabel } from './Typography';
 
 interface SettingsGroupProps {
   children: React.ReactNode;
@@ -38,16 +39,28 @@ export function SettingsGroup({ children, accessibilityRole, accessibilityLabel 
   );
 }
 
+type FAName = React.ComponentProps<typeof FontAwesome>['name'];
+
 type RowKind =
   | { kind: 'radio'; selected: boolean; onPress: () => void }
   | { kind: 'switch'; value: boolean; onValueChange: (v: boolean) => void }
-  | { kind: 'button'; onPress: () => void; chevron?: boolean }
+  | {
+      kind: 'button';
+      onPress: () => void;
+      chevron?: boolean;
+      /** Current setting shown before the chevron, e.g. "English (US)". */
+      value?: string;
+    }
   | { kind: 'info' };
 
 type SettingsRowProps = RowKind & {
   title: string;
   description?: string;
-  /** Leading visual (icon, swatch). Hidden from screen readers. */
+  /** Leading icon in a rounded tile. */
+  icon?: FAName;
+  /** Tile color for `icon`; defaults to a neutral tint. */
+  iconBackground?: string;
+  /** Custom leading visual instead of `icon` (avatar, swatch). Hidden from screen readers. */
   left?: React.ReactNode;
   /** Trailing content for info rows (e.g. a button). */
   right?: React.ReactNode;
@@ -62,7 +75,14 @@ type SettingsRowProps = RowKind & {
  */
 export function SettingsRow(props: SettingsRowProps) {
   const { theme } = useThemeStore();
-  const { title, description, left, right, tone, testID } = props;
+  const { title, description, icon, iconBackground, right, tone, testID } = props;
+  const left =
+    props.left ??
+    (icon ? (
+      <View style={[styles.iconTile, { backgroundColor: iconBackground ?? theme.colors.primaryLight }]}>
+        <FontAwesome name={icon} size={15} color="#FFFFFF" />
+      </View>
+    ) : null);
 
   const body = (
     <>
@@ -149,17 +169,22 @@ export function SettingsRow(props: SettingsRowProps) {
     );
   }
 
-  const { onPress, chevron = true } = props;
+  const { onPress, chevron = true, value } = props;
   return (
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={value ? `${title}, ${value}` : title}
       accessibilityHint={description}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       {body}
+      {value ? (
+        <Text style={[styles.value, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
       {chevron && (
         <FontAwesome name="chevron-right" size={12} color={theme.colors.textTertiary} {...decorative} />
       )}
@@ -169,6 +194,19 @@ export function SettingsRow(props: SettingsRowProps) {
 
 const styles = StyleSheet.create({
   group: {
+    marginBottom: 8,
+  },
+  section: {
+    marginTop: 24,
+  },
+  sectionLabel: {
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+  footer: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginHorizontal: 4,
     marginBottom: 8,
   },
   divider: {
@@ -208,6 +246,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  value: {
+    fontSize: 15,
+    flexShrink: 1,
+    maxWidth: '50%',
+    textAlign: 'right',
+  },
+  iconTile: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   track: {
     width: 51,
     height: 31,
@@ -231,3 +282,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+interface SettingsSectionProps {
+  /** Small uppercase heading above the group. */
+  label?: string;
+  /** Explanatory note under the group. */
+  footer?: string;
+  children: React.ReactNode;
+}
+
+/** A labelled block of settings: heading, controls, optional note. */
+export function SettingsSection({ label, footer, children }: SettingsSectionProps) {
+  const { theme } = useThemeStore();
+  return (
+    <View style={styles.section}>
+      {label ? <SectionLabel style={styles.sectionLabel}>{label}</SectionLabel> : null}
+      {children}
+      {footer ? (
+        <Text style={[styles.footer, { color: theme.colors.textTertiary }]}>{footer}</Text>
+      ) : null}
+    </View>
+  );
+}

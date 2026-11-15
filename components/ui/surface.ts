@@ -1,7 +1,7 @@
 import { Platform, type ViewStyle } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSolidSurfaces } from '@/lib/accessibility';
-import { rimShadow, useNativeGlass } from '@/lib/glass';
+import { rimShadow, useNativeGlass, useSolidSurfaceColor } from '@/lib/glass';
 
 /**
  * Background/border style for ordinary rows, chips and buttons built from a
@@ -10,15 +10,15 @@ import { rimShadow, useNativeGlass } from '@/lib/glass';
  *  - Glass, iOS 26+: transparent — render <SurfaceGlass> as the first child for real Liquid Glass.
  *  - Glass, older native: a tinted translucent fill (a BlurView can't be a style).
  *  - Solid surfaces (Reduce Transparency / Increase Contrast / in-app): opaque.
- *  - Afterglow: matte.
  */
 export function useSurfaceStyle(emphasis: 'default' | 'strong' = 'default'): ViewStyle {
   const { theme } = useThemeStore();
   const solid = useSolidSurfaces();
   const native = useNativeGlass();
+  const solidColor = useSolidSurfaceColor();
 
   if (solid) {
-    return { backgroundColor: theme.colors.surfaceOpaque, borderWidth: 1, borderColor: theme.colors.border };
+    return { backgroundColor: solidColor, borderWidth: 1, borderColor: theme.colors.border };
   }
 
   if (!theme.isGlass) {

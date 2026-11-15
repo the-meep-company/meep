@@ -5,9 +5,10 @@ import { useThemeStore } from '@/stores/themeStore';
 import GlassCard from '@/components/common/GlassCard';
 import { MeshBackground, GrainOverlay } from '@/components/common/GlassBackground';
 import { decorative } from '@/lib/accessibility';
+import { useGlowCards } from '@/lib/glass';
 import type { GlowName } from '@/themes';
 
-/** A grainy soft-gradient fill (the Afterglow "glow"), sized to its parent. */
+/** A grainy soft-gradient fill (a "glow"), sized to its parent. */
 export function GlowFill({ name, radius = 0 }: { name: GlowName; radius?: number }) {
   const { theme } = useThemeStore();
   return (
@@ -22,7 +23,7 @@ export function GlowFill({ name, radius = 0 }: { name: GlowName; radius?: number
         colors={['rgba(0,0,0,0.28)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.30)']}
         style={StyleSheet.absoluteFill}
       />
-      <GrainOverlay level="strong" />
+      <GrainOverlay level={1} />
     </View>
   );
 }
@@ -30,13 +31,13 @@ export function GlowFill({ name, radius = 0 }: { name: GlowName; radius?: number
 interface CardProps extends ViewProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-  /** 'glow' = hero card: a grainy gradient on Afterglow, glass on Liquid Glass. */
+  /** 'glow' = hero card: glass normally, a grainy gradient when the user picks solid surfaces. */
   variant?: 'surface' | 'glow';
   glow?: GlowName;
   radius?: number;
 }
 
-/** The app's card. Picks glass, matte, or glow from the active theme. */
+/** The app's card: glass, or (for hero cards with solid surfaces) a glow. */
 export default function Card({
   children,
   style,
@@ -47,21 +48,22 @@ export default function Card({
 }: CardProps) {
   const { theme } = useThemeStore();
   const r = radius ?? theme.borderRadius.lg;
+  const glowCards = useGlowCards();
+
+  if (variant === 'glow' && glowCards) {
+    return (
+      <View style={[styles.glow, { borderRadius: r }, style]} {...rest}>
+        <GlowFill name={glow} radius={r} />
+        {children}
+      </View>
+    );
+  }
 
   if (theme.isGlass) {
     return (
       <GlassCard radius={r} style={style} {...rest}>
         {children}
       </GlassCard>
-    );
-  }
-
-  if (variant === 'glow') {
-    return (
-      <View style={[styles.glow, { borderRadius: r }, style]} {...rest}>
-        <GlowFill name={glow} radius={r} />
-        {children}
-      </View>
     );
   }
 

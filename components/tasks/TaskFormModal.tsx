@@ -5,6 +5,7 @@ import {
   Modal, ScrollView, Platform,
 } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
+import { useSolidSurfaceColor } from '@/lib/glass';
 import { useTaskStore } from '@/stores/taskStore';
 import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type Task, type TaskPriority } from '@/types';
@@ -36,6 +37,7 @@ const PRIORITIES: { value: TaskPriority; label: string; color: string }[] = ([1,
 
 export default function TaskFormModal({ visible, editTask, onClose }: TaskFormModalProps) {
   const { theme } = useThemeStore();
+  const solidColor = useSolidSurfaceColor();
   const reduceMotion = useReduceMotion();
   const { addTask, updateTask, deleteTask } = useTaskStore();
 
@@ -115,7 +117,7 @@ export default function TaskFormModal({ visible, editTask, onClose }: TaskFormMo
           style={[
             styles.modal,
             {
-              backgroundColor: theme.colors.surfaceOpaque, // sheets must be solid: glass `surface` is see-through
+              backgroundColor: solidColor, // sheets must be solid: glass `surface` is see-through
               borderRadius: theme.borderRadius.lg,
             },
           ]}

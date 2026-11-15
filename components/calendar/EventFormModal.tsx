@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { format, addHours, setHours, setMinutes } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
+import { useSolidSurfaceColor } from '@/lib/glass';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type CalendarEvent } from '@/types';
@@ -40,6 +41,7 @@ export default function EventFormModal({
   onEventSaved,
 }: EventFormModalProps) {
   const { theme } = useThemeStore();
+  const solidColor = useSolidSurfaceColor();
   const reduceMotion = useReduceMotion();
   const { addEvent, updateEvent, deleteEvent } = useCalendarStore();
 
@@ -135,7 +137,7 @@ export default function EventFormModal({
           style={[
             styles.modal,
             {
-              backgroundColor: theme.colors.surfaceOpaque, // sheets must be solid: glass `surface` is see-through
+              backgroundColor: solidColor, // sheets must be solid: glass `surface` is see-through
               borderRadius: theme.borderRadius.lg,
             },
           ]}

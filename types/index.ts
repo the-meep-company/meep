@@ -93,8 +93,8 @@ export type GlassBackgroundId =
   | 'studio'
   | 'aurora'
   | 'sunset'
-  | 'ember';
-export type GrainLevel = 'off' | 'subtle' | 'strong';
+  | 'ember'
+  | 'afterglow';
 
 // ===== Utility =====
 export interface TimeSlot {

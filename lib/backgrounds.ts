@@ -1,6 +1,6 @@
 import type { GlassBackgroundId } from '@/types';
 
-// Mesh-gradient wallpapers for the Liquid Glass theme. Each is a base gradient
+// Mesh-gradient wallpapers. Each is a base gradient
 // plus soft color blobs. Blob geometry is in fractions of the container so one
 // definition renders both full-screen and as a small swatch:
 //   size = diameter as a fraction of container width
@@ -23,6 +23,8 @@ export interface BackgroundPreset {
   scrim: number;
   /** Light wallpapers soften blobs with a light veil on native instead of a dark one. */
   light: boolean;
+  /** Card color when surfaces are solid, tinted to sit naturally on this wallpaper. */
+  solid: string;
 }
 
 export const BACKGROUND_PRESETS: BackgroundPreset[] = [
@@ -38,6 +40,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0,
     light: false,
+    solid: '#1E2740',
   },
   {
     id: 'meadow',
@@ -51,6 +54,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0.34,
     light: true,
+    solid: '#1F2A22',
   },
   {
     id: 'sky',
@@ -64,6 +68,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0.34,
     light: true,
+    solid: '#1E2A3D',
   },
   {
     id: 'dusk',
@@ -77,6 +82,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0.36,
     light: true,
+    solid: '#2A2428',
   },
   {
     id: 'rose',
@@ -90,6 +96,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0.34,
     light: true,
+    solid: '#2E2025',
   },
   {
     id: 'studio',
@@ -103,6 +110,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0.12,
     light: false,
+    solid: '#24211F',
   },
   {
     id: 'aurora',
@@ -116,6 +124,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0,
     light: false,
+    solid: '#13232B',
   },
   {
     id: 'sunset',
@@ -129,6 +138,7 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0.1,
     light: false,
+    solid: '#2E1D16',
   },
   {
     // Red-orange light from the top-left, through deep teal, into near-black.
@@ -143,6 +153,21 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     ],
     scrim: 0,
     light: false,
+    solid: '#1C1D1E',
+  },
+  {
+    // Warm near-black with soft light bleeding in at the edges. With solid
+    // surfaces, the Apricot accent and strong grain this is the old Afterglow theme.
+    id: 'afterglow',
+    name: 'Afterglow',
+    base: ['#1B1719', '#0B0A0C'],
+    blobs: [
+      { color: '#E9875E', size: 1.0, left: -0.45, top: -0.3, opacity: 0.16 },
+      { color: '#4C8C94', size: 0.9, left: 0.5, top: 0.72, opacity: 0.12 },
+    ],
+    scrim: 0,
+    light: false,
+    solid: '#1A181B',
   },
 ];
 

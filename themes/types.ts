@@ -8,13 +8,6 @@ export interface GlowPalette {
   blobs: MeshBlob[];
 }
 
-/** Ambient full-screen backdrop for non-glass themes (glass uses wallpapers). */
-export interface Backdrop {
-  base: readonly [string, string, ...string[]];
-  blobs: MeshBlob[];
-  light: boolean;
-}
-
 export interface TextStyleToken {
   fontSize: number;
   fontWeight: '300' | '400' | '500' | '600' | '700';
@@ -30,7 +23,6 @@ export interface ThemeDefinition {
   /** Glass themes render translucent blurred surfaces over a wallpaper. */
   isGlass: boolean;
   gradient: readonly [string, string, ...string[]];
-  backdrop: Backdrop | null;
   glows: Record<GlowName, GlowPalette>;
   colors: {
     background: string;
@@ -46,7 +38,7 @@ export interface ThemeDefinition {
     /** Text/icons drawn on a `primary` fill. */
     onPrimary: string;
     primaryLight: string;
-    /** Small highlights and links. */
+    /** Small highlights and links. The user picks it (lib/accent.ts); always a 6-digit hex. */
     accent: string;
     border: string;
     borderLight: string;
