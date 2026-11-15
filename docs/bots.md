@@ -186,7 +186,14 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
      (`npx supabase projects api-keys --reveal`), not the legacy service_role JWT.
 3. Function secrets:
    - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, which must be the same OAuth
-     client as the Supabase Google auth provider.
+     client as the Supabase Google auth provider (Authentication → Sign In /
+     Providers → Google). If they differ, sign-in works but the calendar shows
+     "Google token refresh failed: unauthorized_client".
+   - That client's Google Cloud project needs three things: the redirect URI
+     `https://<project ref>.supabase.co/auth/v1/callback` on the client, the
+     Google Calendar API enabled, and the OAuth consent screen published
+     ("In production"). In "Testing" only listed test users can sign in, and
+     Google expires their calendar access after 7 days.
    - `ANTHROPIC_API_KEY` is already set.
 4. Deploy:
    ```
@@ -197,9 +204,15 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
    - optional: `EXPO_ACCESS_TOKEN`, if push security is turned on for the Expo project
    - `BOTS_PAUSE_SECRET`: any long random string
    - optional: `BOT_MODEL_DEEP` (default `claude-opus-5-5`) and `BOT_MODEL_FAST` (default `claude-sonnet-5-5`)
-6. Push needs an EAS project id: run `eas init` once, which writes
-   `extra.eas.projectId` to the app config. Without it the app skips
-   registering for notifications (and says so in the console). iOS push also
-   needs a paid Apple team, like App Groups.
-7. Existing Google users need to sign in with Google once more so the server gets
+6. Push uses the shared Expo project `@themeepcompany/meep`; its id is in
+   `app.json` (`extra.eas.projectId`), so there is nothing to init. There is
+   no shared Apple team, so each developer adds a push key for their own
+   bundle id from their own paid Apple account: `npx eas-cli login` (you need
+   to be a member of the `themeepcompany` Expo organisation), then
+   `APPLE_BUNDLE_ID=com.yourname.meep npx eas-cli credentials -p ios`. Without
+   a key for the build's bundle id, Expo can't deliver to that build.
+7. Native Google sign-in returns to `meep://`, so add `meep://**` to the
+   project's redirect URLs (Authentication → URL Configuration). Without it
+   the sign-in ends on a dead `localhost` page.
+8. Existing Google users need to sign in with Google once more so the server gets
    a refresh token. Until they do, Settings → Google Calendar shows "Connect".
