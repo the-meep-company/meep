@@ -18,6 +18,7 @@ import {
   ensureLiquidGlassFilter,
   hasNativeGlass,
   useNativeGlass,
+  useSolidSurfaceColor,
   type GlassPreset,
 } from '@/lib/glass';
 import { useSolidSurfaces, decorative } from '@/lib/accessibility';
@@ -80,6 +81,7 @@ export function GlassLayers({ preset, radius = 0 }: { preset: GlassPreset; radiu
   const { theme } = useThemeStore();
   const solid = useSolidSurfaces();
   const native = useNativeGlass();
+  const solidColor = useSolidSurfaceColor();
 
   useEffect(() => {
     if (preset.refract && !solid) ensureLiquidGlassFilter();
@@ -90,7 +92,7 @@ export function GlassLayers({ preset, radius = 0 }: { preset: GlassPreset; radiu
   if (solid) {
     return (
       <View
-        style={[StyleSheet.absoluteFill, rounded, { backgroundColor: theme.colors.surfaceOpaque }]}
+        style={[StyleSheet.absoluteFill, rounded, { backgroundColor: solidColor }]}
         pointerEvents="none"
         {...decorative}
       />

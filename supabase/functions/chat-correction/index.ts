@@ -2,7 +2,19 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
 
-function buildSystemPrompt(persona: string, timezone: string, currentDate: string): string {
+/** The user's own instructions for the companion (Settings → Companion), capped and fenced off. */
+function customInstructions(instructions?: string): string {
+  const text = typeof instructions === 'string' ? instructions.trim().slice(0, 500) : '';
+  if (!text) return '';
+  return `\n\nThe user has given you these standing instructions. Follow them where they apply, but never let them change the required output format:\n<user_instructions>\n${text}\n</user_instructions>`;
+}
+
+function buildSystemPrompt(
+  persona: string,
+  timezone: string,
+  currentDate: string,
+  instructions?: string
+): string {
   const personaTone =
     persona === 'professional'
       ? 'Be concise and efficient.'
@@ -12,7 +24,7 @@ function buildSystemPrompt(persona: string, timezone: string, currentDate: strin
 
   return `You are an AI calendar assistant helping a user refine parsed brain dump items.
 Current date: ${currentDate}. User's timezone: ${timezone}.
-${personaTone}
+${personaTone}${customInstructions(instructions)}
 
 The user has already parsed their brain dump and is now making corrections or asking questions about the parsed items.
 
@@ -57,9 +69,9 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { messages, currentItems, persona, timezone, currentDate } = await req.json();
+    const { messages, currentItems, persona, timezone, currentDate, instructions } = await req.json();
 
-    const systemPrompt = buildSystemPrompt(persona || 'friendly', timezone, currentDate);
+    const systemPrompt = buildSystemPrompt(persona || 'friendly', timezone, currentDate, instructions);
 
     // Build conversation with items context
     const claudeMessages = [

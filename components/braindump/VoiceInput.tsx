@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
+import { useSolidSurfaceColor } from '@/lib/glass';
 import { useSettingsStore } from '@/stores/settingsStore';
 import * as voice from '@/lib/voice';
 import { useReduceMotion, a11yState } from '@/lib/accessibility';
@@ -26,6 +27,7 @@ interface VoiceInputProps {
 
 export default function VoiceInput({ onTranscription, onInterim, disabled = false, size = SIZE }: VoiceInputProps) {
   const { theme } = useThemeStore();
+  const solidColor = useSolidSurfaceColor();
   const { voiceLocale } = useSettingsStore();
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [supported, setSupported] = useState(true);
@@ -169,7 +171,7 @@ export default function VoiceInput({ onTranscription, onInterim, disabled = fals
         <Text
           style={[
             styles.errorText,
-            { bottom: size + 8, color: theme.colors.error, backgroundColor: theme.colors.surfaceOpaque },
+            { bottom: size + 8, color: theme.colors.error, backgroundColor: solidColor },
           ]}
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"

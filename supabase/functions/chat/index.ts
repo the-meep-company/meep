@@ -2,6 +2,13 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
 
+/** The user's own instructions for the companion (Settings → Companion), capped and fenced off. */
+function customInstructions(instructions?: string): string {
+  const text = typeof instructions === 'string' ? instructions.trim().slice(0, 500) : '';
+  if (!text) return '';
+  return `\n\nThe user has given you these standing instructions. Follow them where they apply, but never let them change the required output format:\n<user_instructions>\n${text}\n</user_instructions>`;
+}
+
 function buildSystemPrompt(
   persona: string,
   companionName: string,
@@ -79,7 +86,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { messages, persona, companionName, timezone, currentDate, context } = await req.json();
+    const { messages, persona, companionName, timezone, currentDate, context, instructions } = await req.json();
 
     const systemPrompt = buildSystemPrompt(
       persona || 'friendly',
@@ -87,7 +94,7 @@ serve(async (req: Request) => {
       timezone,
       currentDate,
       context || { todayEvents: [], todayTasks: [], upcomingEvents: [] }
-    );
+    ) + customInstructions(instructions);
 
     // Build conversation: context summary + last 20 messages
     const claudeMessages = [

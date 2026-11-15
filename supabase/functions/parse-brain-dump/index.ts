@@ -2,11 +2,19 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
 
+/** The user's own instructions for the companion (Settings → Companion), capped and fenced off. */
+function customInstructions(instructions?: string): string {
+  const text = typeof instructions === 'string' ? instructions.trim().slice(0, 500) : '';
+  if (!text) return '';
+  return `\n\nThe user has given you these standing instructions. Follow them where they apply, but never let them change the required output format:\n<user_instructions>\n${text}\n</user_instructions>`;
+}
+
 function buildSystemPrompt(
   persona: string,
   timezone: string,
   currentDate: string,
-  existingEvents?: { title: string; startTime: string; endTime: string }[]
+  existingEvents?: { title: string; startTime: string; endTime: string }[],
+  instructions?: string
 ): string {
   const personaTone =
     persona === 'professional'
@@ -21,7 +29,7 @@ function buildSystemPrompt(
 
   return `You are an AI assistant that parses brain dump text into structured calendar items.
 Current date: ${currentDate}. User's timezone: ${timezone}.
-${personaTone}
+${personaTone}${customInstructions(instructions)}
 
 Parse the user's text and output ONLY valid JSON matching this exact schema:
 {
@@ -72,7 +80,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { text, persona, existingEvents, timezone, currentDate } = await req.json();
+    const { text, persona, existingEvents, timezone, currentDate, instructions } = await req.json();
 
     if (!text?.trim()) {
       return new Response(JSON.stringify({ error: 'No text provided' }), {
@@ -81,7 +89,7 @@ serve(async (req: Request) => {
       });
     }
 
-    const systemPrompt = buildSystemPrompt(persona || 'friendly', timezone, currentDate, existingEvents);
+    const systemPrompt = buildSystemPrompt(persona || 'friendly', timezone, currentDate, existingEvents, instructions);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

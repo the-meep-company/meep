@@ -15,10 +15,8 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { getBackgroundPreset, CUSTOM_PHOTO_SCRIM, type MeshBlob } from '@/lib/backgrounds';
 import { decorative } from '@/lib/accessibility';
 import { useWideLayout, CONTENT_MAX_WIDTH } from '@/lib/layout';
-import type { GrainLevel } from '@/types';
 
 const GRAIN = require('@/assets/images/grain.png');
-const GRAIN_OPACITY: Record<GrainLevel, number> = { off: 0, subtle: 0.5, strong: 1 };
 const pct = (n: number) => `${n * 100}%` as DimensionValue;
 
 export interface Mesh {
@@ -68,16 +66,16 @@ export function MeshBackground({ preset, scale = 1 }: { preset: Mesh; scale?: nu
   );
 }
 
-/** Repeating film-grain texture. */
-export function GrainOverlay({ level }: { level: GrainLevel }) {
-  if (level === 'off') return null;
+/** Repeating film-grain texture. `level` is its strength, 0 (none) to 1. */
+export function GrainOverlay({ level }: { level: number }) {
+  if (level <= 0) return null;
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" {...decorative}>
       {/* Explicit size: a bundled image otherwise takes its natural 256px size on web */}
       <Image
         source={GRAIN}
         resizeMode="repeat"
-        style={{ width: '100%', height: '100%', opacity: GRAIN_OPACITY[level] }}
+        style={{ width: '100%', height: '100%', opacity: Math.min(1, level) }}
       />
     </View>
   );
@@ -92,8 +90,7 @@ interface Props {
 
 /**
  * Full-bleed screen background, wrapping a screen root.
- *  - Glass themes: the user's wallpaper or photo, a readability scrim, grain.
- *  - Themes with a backdrop (Afterglow): soft ambient glows plus grain.
+ * The user's wallpaper or photo, a readability scrim, then grain.
  */
 export default function GlassBackground({ children, style, centered }: Props) {
   const { theme } = useThemeStore();
@@ -128,15 +125,13 @@ export default function GlassBackground({ children, style, centered }: Props) {
         )}
       </>
     );
-  } else if (theme.backdrop) {
-    layers = <MeshBackground preset={theme.backdrop} />;
   }
 
   return (
     // The screen's main landmark (the floating tab bar is the navigation one).
     <View role="main" style={[styles.fill, { backgroundColor: theme.colors.background }, style]}>
       {layers}
-      {(theme.isGlass || theme.backdrop) && <GrainOverlay level={grain} />}
+      {theme.isGlass && <GrainOverlay level={grain} />}
       {centered && wide ? <View style={styles.column}>{children}</View> : children}
     </View>
   );

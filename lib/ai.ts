@@ -1,8 +1,14 @@
 import { supabase } from './supabase';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
 import type { AIPersona, BrainDumpResponse, ChatAction, ChatMessage, ParsedItem } from '@/types';
+
+/** The user's custom instructions for the companion (Settings → Companion), if any. */
+function companionInstructions(): string | undefined {
+  return useSettingsStore.getState().companionInstructions.trim() || undefined;
+}
 
 export async function parseBrainDump(
   text: string,
@@ -14,6 +20,7 @@ export async function parseBrainDump(
     body: {
       text,
       persona,
+      instructions: companionInstructions(),
       timezone,
       currentDate: new Date().toISOString(),
       existingEvents,
@@ -35,6 +42,7 @@ export async function sendChatCorrection(
       messages,
       currentItems,
       persona,
+      instructions: companionInstructions(),
       timezone,
       currentDate: new Date().toISOString(),
     },
@@ -83,6 +91,7 @@ export async function sendChatMessage(
     body: {
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       persona,
+      instructions: companionInstructions(),
       companionName,
       timezone,
       currentDate: now.toISOString(),

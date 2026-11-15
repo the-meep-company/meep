@@ -133,7 +133,7 @@ function normalizeTasks(tasks: Task[], category: string | null): WidgetTask[] {
 export function buildWidgetPayload(): WidgetPayload {
   const allEvents = useCalendarStore.getState().events;
   const allTasks = useTaskStore.getState().tasks;
-  const { companionName, aiPersona, widgetCalendarView, widgetCategory } =
+  const { companionName, aiPersona, widgetCategory } =
     useSettingsStore.getState();
 
   const events = normalizeDailyEvents(allEvents);
@@ -143,7 +143,8 @@ export function buildWidgetPayload(): WidgetPayload {
 
   return {
     date: new Date().toISOString(),
-    calendarView: widgetCalendarView,
+    // The widget draws the daily view only; the field stays for the Swift decoder.
+    calendarView: 'daily',
     selectedCategory: widgetCategory,
     events,
     weekEvents,

@@ -8,6 +8,7 @@ import { useSyncStore } from '@/stores/syncStore';
 import { performSync } from '@/lib/googleCalendar';
 import { useTaskStore } from '@/stores/taskStore';
 import { usePatternStore } from '@/stores/patternStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { detectConflictingTasks, autoScheduleTasks } from '@/lib/scheduler';
 import GlassBackground from '@/components/common/GlassBackground';
 import CalendarHeader from '@/components/calendar/CalendarHeader';
@@ -107,7 +108,7 @@ export default function CalendarScreen() {
       patterns,
       dateRange: { start: eventDay, end: windowEnd },
       workingHours: { startHour: 8, endHour: 21 },
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone: useSettingsStore.getState().timezone,
     });
 
     if (result.placements.length === 0 && result.unplaceable.length === 0) return;

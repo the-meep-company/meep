@@ -3,7 +3,8 @@ import type { BlurTint } from 'expo-blur';
 import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
-import { useSolidSurfaces } from '@/lib/accessibility';
+import { useIncreaseContrast, useSolidSurfaces } from '@/lib/accessibility';
+import { getBackgroundPreset } from '@/lib/backgrounds';
 import type { GlassStyle } from '@/types';
 
 // Glass materials. Each surface is layered: blur → fill → glossy top sheen →
@@ -148,6 +149,25 @@ export function useNativeGlass(): boolean {
   const isGlass = useThemeStore((s) => s.theme.isGlass);
   const solid = useSolidSurfaces();
   return isGlass && !solid && hasNativeGlass();
+}
+
+/** Card colour when surfaces are solid: tinted to match the wallpaper. */
+export function useSolidSurfaceColor(): string {
+  const fallback = useThemeStore((s) => s.theme.colors.surfaceOpaque);
+  const background = useSettingsStore((s) => s.glassBackground);
+  // A photo could be any colour, so it keeps the neutral default.
+  return background === 'custom' ? fallback : getBackgroundPreset(background).solid;
+}
+
+/**
+ * True when hero cards should draw their grainy gradient "glow" instead of a
+ * plain surface: the user chose solid surfaces as a look. When the system asked
+ * for more contrast, cards stay plain.
+ */
+export function useGlowCards(): boolean {
+  const chosen = useSettingsStore((s) => s.solidSurfaces);
+  const increaseContrast = useIncreaseContrast();
+  return chosen && !increaseContrast;
 }
 
 /** The user's chosen glass preset, or an explicit override (e.g. for previews). */

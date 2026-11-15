@@ -11,7 +11,6 @@ export const glass: ThemeDefinition = {
   appearance: 'dark',
   isGlass: true,
   gradient: ['#1B3C70', '#0A1024'],
-  backdrop: null, // glass uses the wallpaper picker instead
   glows,
   colors: {
     background: '#0C1530', // flat fallback behind the wallpaper
@@ -25,7 +24,7 @@ export const glass: ThemeDefinition = {
     primary: '#FFFFFF',
     onPrimary: '#0B1020',
     primaryLight: 'rgba(255,255,255,0.18)',
-    accent: '#A9CBFF',
+    accent: '#A9CBFF', // default; replaced by the user's accent in stores/themeStore
     border: 'rgba(255,255,255,0.14)',
     borderLight: 'rgba(255,255,255,0.07)',
     success: '#6EE7A0',
