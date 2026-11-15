@@ -56,6 +56,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "themeepcompany",
+    "extra": {
+      "eas": {
+        "projectId": "ed7f19de-d6b1-4c3f-af80-8fb4b2b84e83"
+      }
     }
   }
 }
