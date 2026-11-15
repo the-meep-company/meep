@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useAuthStore } from '@/stores/authStore';
 import SettingsPage from '@/components/settings/SettingsPage';
@@ -10,6 +10,11 @@ export default function AccountScreen() {
   const { user, signOut } = useAuthStore();
 
   const confirmSignOut = () => {
+    // react-native-web's Alert is a no-op, so the browser's own dialog confirms there.
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to sign out?')) signOut();
+      return;
+    }
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },

@@ -17,6 +17,8 @@ import type { User, Session } from '@supabase/supabase-js';
 import type { AIPersona } from '@/types';
 
 const GOOGLE_TOKEN_KEY = 'meep_google_token';
+// Guests keep local-only data, so remember the choice across launches and page reloads.
+const GUEST_KEY = 'meep_guest';
 const ENABLE_APPLE_SIGN_IN = process.env.EXPO_PUBLIC_ENABLE_APPLE_SIGN_IN === 'true';
 
 // Only needed for the native popup OAuth flow — on web the browser handles session
@@ -69,7 +71,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         // Sync data on app launch if logged in
         performSync(session.user.id);
       } else {
-        set({ isLoading: false });
+        const isGuest = (await AsyncStorage.getItem(GUEST_KEY)) === 'true';
+        set({ isGuest, isLoading: false });
       }
 
       // Listen for auth changes
@@ -212,13 +215,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   signOut: async () => {
-    await AsyncStorage.removeItem(GOOGLE_TOKEN_KEY);
+    await AsyncStorage.multiRemove([GOOGLE_TOKEN_KEY, GUEST_KEY]);
     await supabase.auth.signOut();
     set({ user: null, session: null, googleToken: null, isGuest: false });
   },
 
   continueAsGuest: () => {
     set({ isGuest: true, isLoading: false });
+    AsyncStorage.setItem(GUEST_KEY, 'true').catch(() => {});
   },
 }));
 

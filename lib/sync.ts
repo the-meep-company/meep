@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { addToQueue, flushQueue } from './syncQueue';
+import { toDbTask, fromDbTask } from './taskRows';
 import type { CalendarEvent, Task, Habit, Goal } from '@/types';
 
 // ===== Type mappings (camelCase ↔ snake_case) =====
@@ -18,26 +19,6 @@ interface DbEvent {
   calendar_id: string | null;
   schedule_source: string | null;
   is_habit: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface DbTask {
-  id: string;
-  user_id: string;
-  title: string;
-  description: string | null;
-  due_date: string | null;
-  scheduled_start: string | null;
-  scheduled_end: string | null;
-  priority: number;
-  category: string | null;
-  color: string | null;
-  status: string;
-  parent_task_id: string | null;
-  estimated_minutes: number | null;
-  carry_over_from: string | null;
-  schedule_source: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -123,49 +104,6 @@ function fromDbEvent(row: DbEvent): CalendarEvent {
     calendarId: row.calendar_id ?? undefined,
     scheduleSource: row.schedule_source as CalendarEvent['scheduleSource'],
     isHabit: row.is_habit,
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
-  };
-}
-
-function toDbTask(task: Task, userId: string): DbTask {
-  return {
-    id: task.id,
-    user_id: userId,
-    title: task.title,
-    description: task.description ?? null,
-    due_date: task.dueDate ? new Date(task.dueDate).toISOString() : null,
-    scheduled_start: task.scheduledStart ? new Date(task.scheduledStart).toISOString() : null,
-    scheduled_end: task.scheduledEnd ? new Date(task.scheduledEnd).toISOString() : null,
-    priority: task.priority,
-    category: task.category ?? null,
-    color: task.color ?? null,
-    status: task.status,
-    parent_task_id: task.parentTaskId ?? null,
-    estimated_minutes: task.estimatedMinutes ?? null,
-    carry_over_from: task.carryOverFrom ?? null,
-    schedule_source: task.scheduleSource ?? null,
-    created_at: new Date(task.createdAt).toISOString(),
-    updated_at: new Date(task.updatedAt).toISOString(),
-  };
-}
-
-function fromDbTask(row: DbTask): Task {
-  return {
-    id: row.id,
-    title: row.title,
-    description: row.description ?? undefined,
-    dueDate: row.due_date ? new Date(row.due_date) : undefined,
-    scheduledStart: row.scheduled_start ? new Date(row.scheduled_start) : undefined,
-    scheduledEnd: row.scheduled_end ? new Date(row.scheduled_end) : undefined,
-    priority: row.priority as Task['priority'],
-    category: row.category ?? undefined,
-    color: row.color ?? undefined,
-    status: row.status as Task['status'],
-    parentTaskId: row.parent_task_id ?? undefined,
-    estimatedMinutes: row.estimated_minutes ?? undefined,
-    carryOverFrom: row.carry_over_from ?? undefined,
-    scheduleSource: row.schedule_source as Task['scheduleSource'],
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

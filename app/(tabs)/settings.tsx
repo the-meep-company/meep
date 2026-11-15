@@ -40,7 +40,7 @@ export default function SettingsScreen() {
     : 'Not connected';
 
   return (
-    <GlassBackground style={styles.container}>
+    <GlassBackground style={styles.container} centered>
       <ScreenHeader />
       <ScrollView
         style={styles.scroll}

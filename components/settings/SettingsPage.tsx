@@ -22,7 +22,7 @@ export default function SettingsPage({ title, children, scroll = true }: Setting
   const padding = { paddingHorizontal: theme.spacing.screen, paddingBottom: insets.bottom + 32 };
 
   return (
-    <GlassBackground>
+    <GlassBackground centered>
       <ScreenHeader
         title={title}
         left={
