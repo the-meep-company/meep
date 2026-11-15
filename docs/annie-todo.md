@@ -18,8 +18,10 @@ notifications, using your own paid Apple account. Tick things off as you go.
 - Shared Expo project `@themeepcompany/meep`; its id is in `app.json`.
 
 ## Your steps
-- [ ] **Join the Expo organisation.** Accept Rahul's invite to `themeepcompany`
-      on expo.dev, then run `npx eas-cli login`.
+- [ ] **Log into Expo.** Run `npx eas-cli login` with the shared
+      `madebymeeps` account. (Or use your own Expo account, once it's been
+      invited to the `themeepcompany` organisation.) There is one Expo project
+      for both of us, already linked in `app.json`, so there's no `eas init`.
 - [ ] **Pull `feature/bots` and run `npm install`** (`expo-notifications` is new).
 - [ ] **Create `.env.local`** in the repo root (gitignored), so the app talks to
       the test project instead of the main one:
@@ -41,13 +43,15 @@ notifications, using your own paid Apple account. Tick things off as you go.
       ```
       `xcrun devicectl list devices` shows your device id. The last line undoes
       a change prebuild makes that shouldn't be committed.
-- [ ] **Add your push key**, so Expo can deliver to your build:
+- [ ] **Add your push key** to the shared Expo project. This is the one
+      per-person step, because your build has its own bundle id and Apple
+      team:
       ```
       APPLE_BUNDLE_ID=com.<yourname>.meep npx eas-cli credentials -p ios
       ```
       Pick the `development` profile, log in with your Apple ID, then
       "Push Notifications: Manage your Apple Push Notifications Key" and let it
-      create a key.
+      create a key. Check the bundle identifier it prints is yours.
 - [ ] **In the app:** sign in with Google (if you were signed in before
       15 Nov, sign out first: your old calendar token came from the other
       client), turn on "Bots can edit" for a
