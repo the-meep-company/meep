@@ -207,8 +207,8 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
 6. Push uses the shared Expo project `@themeepcompany/meep`; its id is in
    `app.json` (`extra.eas.projectId`), so there is nothing to init. There is
    no shared Apple team, so each developer adds a push key for their own
-   bundle id from their own paid Apple account: `npx eas-cli login` (you need
-   to be a member of the `themeepcompany` Expo organisation), then
+   bundle id from their own paid Apple account: `npx eas-cli login` with the
+   shared `madebymeeps` Expo account, then
    `APPLE_BUNDLE_ID=com.yourname.meep npx eas-cli credentials -p ios`. Without
    a key for the build's bundle id, Expo can't deliver to that build.
 7. Native Google sign-in returns to `meep://`, so add `meep://**` to the

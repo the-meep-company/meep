@@ -19,9 +19,9 @@ notifications, using your own paid Apple account. Tick things off as you go.
 
 ## Your steps
 - [ ] **Log into Expo.** Run `npx eas-cli login` with the shared
-      `madebymeeps` account. (Or use your own Expo account, once it's been
-      invited to the `themeepcompany` organisation.) There is one Expo project
-      for both of us, already linked in `app.json`, so there's no `eas init`.
+      `madebymeeps` account; we both use that one login. There is one Expo
+      project for both of us, already linked in `app.json`, so there's no
+      `eas init`.
 - [ ] **Pull `feature/bots` and run `npm install`** (`expo-notifications` is new).
 - [ ] **Create `.env.local`** in the repo root (gitignored), so the app talks to
       the test project instead of the main one:
