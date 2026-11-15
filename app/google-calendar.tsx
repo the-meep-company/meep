@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -10,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useEffect, useRef } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
@@ -18,10 +19,10 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { fetchGoogleCalendars, performSync } from '@/lib/googleCalendar';
-import SettingsPage from '@/components/settings/SettingsPage';
 import { decorative, hitSlopFor, a11yState } from '@/lib/accessibility';
 
 export default function GoogleCalendarScreen() {
+  const router = useRouter();
   const { theme } = useThemeStore();
   const { googleToken, signInWithGoogle } = useAuthStore();
   const accessToken = googleToken;
@@ -150,10 +151,28 @@ export default function GoogleCalendarScreen() {
     : 'Never synced';
 
   return (
-    <SettingsPage title="Google Calendar">
-      {/* Hide expo-router's auto-generated Stack header — SettingsPage draws ours */}
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      contentContainerStyle={styles.content}
+    >
+      {/* Hide expo-router's auto-generated Stack header — we draw our own */}
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.top} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={hitSlopFor(32)}
+        >
+          <FontAwesome name="chevron-left" size={16} color={theme.colors.primary} />
+        </TouchableOpacity>
+        <Text accessibilityRole="header" style={[styles.title, { color: theme.colors.text }]}>
+          Google Calendar
+        </Text>
+      </View>
 
       {/* Connection status */}
       <View
@@ -325,13 +344,31 @@ export default function GoogleCalendarScreen() {
           Google Calendar events are read-only in Meep v1. To edit them, open Google Calendar directly.
         </Text>
       </View>
-    </SettingsPage>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  top: {
-    height: 16,
+  container: {
+    flex: 1,
+  },
+  content: {
+    padding: 20,
+    paddingBottom: 60,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 60,
+    marginBottom: 24,
+    gap: 12,
+  },
+  backButton: {
+    padding: 8,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
   },
   sectionTitle: {
     fontSize: 14,
@@ -344,7 +381,7 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
     marginBottom: 10,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   cardRow: {
     flexDirection: 'row',

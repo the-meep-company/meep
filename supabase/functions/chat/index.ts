@@ -18,8 +18,7 @@ function buildSystemPrompt(
     todayEvents: { id: string; title: string; startTime: string; endTime: string }[];
     todayTasks: { id: string; title: string; status: string; priority: number; dueDate?: string }[];
     upcomingEvents: { id: string; title: string; startTime: string; endTime: string }[];
-  },
-  instructions?: string
+  }
 ): string {
   const personaTone =
     persona === 'professional'
@@ -42,7 +41,7 @@ function buildSystemPrompt(
 
   return `You are ${companionName}, an AI calendar companion.
 Current date: ${currentDate}. User's timezone: ${timezone}.
-${personaTone}${customInstructions(instructions)}
+${personaTone}
 
 Here is the user's current schedule:
 ${eventsSection}
@@ -94,9 +93,8 @@ serve(async (req: Request) => {
       companionName || 'Meep',
       timezone,
       currentDate,
-      context || { todayEvents: [], todayTasks: [], upcomingEvents: [] },
-      instructions
-    );
+      context || { todayEvents: [], todayTasks: [], upcomingEvents: [] }
+    ) + customInstructions(instructions);
 
     // Build conversation: context summary + last 20 messages
     const claudeMessages = [

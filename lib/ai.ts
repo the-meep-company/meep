@@ -1,8 +1,8 @@
 import { supabase } from './supabase';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import type { AIPersona, BrainDumpResponse, ChatAction, ChatMessage, ParsedItem } from '@/types';
 
 /** The user's custom instructions for the companion (Settings → Companion), if any. */
