@@ -181,6 +181,9 @@ There is no hard cap. After 50 runs in a UTC day, bot-tick posts once to Discord
    select vault.create_secret('https://qvqcfkjmflvkochasfdz.supabase.co', 'project_url');
    select vault.create_secret('<service role key>', 'service_role_key');
    ```
+   - The key must equal the functions' `SUPABASE_SERVICE_ROLE_KEY`, or every cron
+     call gets a 403. On newer projects that's the `sb_secret_…` key
+     (`npx supabase projects api-keys --reveal`), not the legacy service_role JWT.
 3. Function secrets:
    - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, which must be the same OAuth
      client as the Supabase Google auth provider.
