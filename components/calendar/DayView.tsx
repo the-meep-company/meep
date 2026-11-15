@@ -1,10 +1,12 @@
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { format, setHours, setMinutes, startOfDay, differenceInMinutes } from 'date-fns';
+import { format, setHours, setMinutes, startOfDay, differenceInMinutes, isSameDay, parseISO } from 'date-fns';
 import { useThemeStore } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useHabitStore } from '@/stores/habitStore';
 import { generateHabitEventsForDate } from '@/lib/habitHelpers';
 import EventBlock from './EventBlock';
+import DraftBlocks from './DraftBlocks';
+import { useFeedStore } from '@/stores/feedStore';
 import { useTabBarClearance } from '@/components/navigation/FloatingTabBar';
 import { decorative } from '@/lib/accessibility';
 import type { CalendarEvent } from '@/types';
@@ -24,7 +26,17 @@ export default function DayView({ onTimeSlotPress, onEventPress }: DayViewProps)
   const { getActiveHabits } = useHabitStore();
   const realEvents = getEventsForDate(selectedDate);
   const habitEvents = generateHabitEventsForDate(getActiveHabits(), selectedDate);
-  const events = [...realEvents, ...habitEvents];
+  // A bot's day plan being tweaked: its blocks are drawn as drafts, and the
+  // events it moves or removes are hidden until the plan is approved.
+  const draft = useFeedStore((s) => s.draft);
+  const draftItem = useFeedStore((s) => (s.draft ? s.items.find((i) => i.id === s.draft!.itemId) : undefined));
+  const showDraft = !!draftItem?.day && isSameDay(parseISO(draftItem.day), selectedDate);
+  const hidden = new Set(
+    showDraft
+      ? draftItem!.changes.filter((c) => c.event_id && !draft!.removed.includes(c.id)).map((c) => c.event_id!)
+      : []
+  );
+  const events = [...realEvents, ...habitEvents].filter((e) => !hidden.has(e.id));
 
   const getEventPosition = (event: CalendarEvent) => {
     const start = new Date(event.startTime);
@@ -95,6 +107,8 @@ export default function DayView({ onTimeSlotPress, onEventPress }: DayViewProps)
             );
           })}
         </View>
+
+        {showDraft && <DraftBlocks day={selectedDate} hourHeight={HOUR_HEIGHT} left={60} />}
 
         {/* Current time indicator */}
         <CurrentTimeIndicator theme={theme} selectedDate={selectedDate} />

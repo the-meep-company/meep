@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  StyleSheet, View, TextInput, Pressable, ActivityIndicator, AccessibilityInfo,
+  StyleSheet, View, Text, TextInput, Pressable, ActivityIndicator, AccessibilityInfo,
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
-import { a11yState } from '@/lib/accessibility';
+import { a11yState, decorative } from '@/lib/accessibility';
 import VoiceInput from '@/components/braindump/VoiceInput';
 import PillTabs from '@/components/ui/PillTabs';
 import { useSurfaceStyle } from '@/components/ui/surface';
@@ -15,11 +15,35 @@ interface BrainDumpInputProps {
   /** When set, adds an "Ask" mode that sends the text as a question instead of parsing it. */
   onAsk?: (text: string) => void;
   isProcessing: boolean;
+  /** Bots that can be addressed with "@name" or a card's Reply. */
+  bots?: { id: string; name: string }[];
+  /** The bot the next message goes to, if any. */
+  target?: { id: string; name: string } | null;
+  onTargetChange?: (id: string | null) => void;
+  onSendToBot?: (botId: string, text: string) => void;
+}
+
+/** The bot whose name the text starts with after "@" (longest name wins), and the rest. */
+function matchMention(text: string, bots: { id: string; name: string }[]) {
+  if (!text.startsWith('@')) return null;
+  const rest = text.slice(1).toLowerCase();
+  const bot = [...bots]
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((b) => rest.startsWith(b.name.toLowerCase()));
+  return bot ? { bot, message: text.slice(1 + bot.name.length).trim() } : null;
 }
 
 type Mode = 'dump' | 'quick' | 'ask';
 
-export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainDumpInputProps) {
+export default function BrainDumpInput({
+  onSubmit,
+  onAsk,
+  isProcessing,
+  bots = [],
+  target,
+  onTargetChange,
+  onSendToBot,
+}: BrainDumpInputProps) {
   const { theme } = useThemeStore();
   const surface = useSurfaceStyle('strong');
   const [text, setText] = useState('');
@@ -27,8 +51,28 @@ export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainD
   const quickMode = mode === 'quick';
   const askMode = mode === 'ask';
   // Quick add and Ask are one-liners that send on return
-  const oneLine = quickMode || askMode;
-  const send = (value: string) => (askMode && onAsk ? onAsk(value) : onSubmit(value));
+  const oneLine = quickMode || askMode || !!target;
+  const send = (value: string) => {
+    // Talking to a bot: a card's Reply, or "@Name message" in any mode.
+    const mention = onSendToBot ? matchMention(value, bots) : null;
+    if (onSendToBot && (target || mention)) {
+      const botId = target?.id ?? mention!.bot.id;
+      const message = target ? value : mention!.message;
+      if (!message) return;
+      onSendToBot(botId, message);
+      setText('');
+      onTargetChange?.(null);
+      return;
+    }
+    if (askMode && onAsk) onAsk(value);
+    else onSubmit(value);
+  };
+  // "@" at the start offers the bots whose names match what's typed so far.
+  const mentionQuery = !target && text.startsWith('@') && !matchMention(text, bots) ? text.slice(1).toLowerCase() : null;
+  const suggestions =
+    mentionQuery != null && onTargetChange
+      ? bots.filter((b) => b.name.toLowerCase().startsWith(mentionQuery)).slice(0, 4)
+      : [];
   // Captures whatever was typed before voice started so we can prepend it correctly
   const textBeforeVoice = useRef('');
   const voiceSessionActive = useRef(false);
@@ -71,17 +115,55 @@ export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainD
 
   return (
     <View style={styles.container}>
-      <PillTabs
-        options={[
-          { value: 'dump', label: 'Brain dump' },
-          { value: 'quick', label: 'Quick add' },
-          ...(onAsk ? [{ value: 'ask' as const, label: 'Ask' }] : []),
-        ]}
-        value={mode}
-        onChange={setMode}
-        accessibilityLabel="Input mode"
-        style={styles.modes}
-      />
+      {target ? (
+        <View style={styles.targetRow}>
+          <View style={[styles.targetChip, surface]}>
+            <SurfaceGlass radius={19} />
+            <FontAwesome name="reply" size={11} color={theme.colors.textSecondary} {...decorative} />
+            <Text style={[styles.targetText, { color: theme.colors.text }]} numberOfLines={1}>
+              To {target.name}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Stop replying to ${target.name}`}
+              hitSlop={10}
+              onPress={() => onTargetChange?.(null)}
+            >
+              <FontAwesome name="times" size={12} color={theme.colors.textTertiary} />
+            </Pressable>
+          </View>
+        </View>
+      ) : suggestions.length ? (
+        <View style={styles.targetRow} accessibilityRole="menu" accessibilityLabel="Bots">
+          {suggestions.map((b) => (
+            <Pressable
+              key={b.id}
+              accessibilityRole="menuitem"
+              accessibilityLabel={`Talk to ${b.name}`}
+              onPress={() => {
+                onTargetChange?.(b.id);
+                setText('');
+              }}
+              style={({ pressed }) => [styles.targetChip, surface, pressed && { opacity: 0.75 }]}
+            >
+              <SurfaceGlass radius={19} />
+              <Text style={[styles.targetText, { color: theme.colors.text }]}>@{b.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <PillTabs
+          options={[
+            { value: 'dump', label: 'Brain dump' },
+            { value: 'quick', label: 'Quick add' },
+            ...(onAsk ? [{ value: 'ask' as const, label: 'Ask' }] : []),
+          ]}
+          value={mode}
+          onChange={setMode}
+          accessibilityLabel="Input mode"
+          style={styles.modes}
+        />
+      )}
 
       {/* Composer: a pill field with the send button inside, mic alongside */}
       <View style={styles.composerRow}>
@@ -89,9 +171,17 @@ export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainD
           <SurfaceGlass radius={FIELD / 2} />
           <TextInput
             style={[styles.input, { color: theme.colors.text }]}
-            placeholder={askMode ? 'Ask about your day…' : quickMode ? 'Add: dentist at 3pm tomorrow' : 'Dump it all here…'}
+            placeholder={
+              target
+                ? `Reply to ${target.name}…`
+                : askMode
+                ? 'Ask about your day, or @ a bot…'
+                : quickMode
+                ? 'Add: dentist at 3pm tomorrow'
+                : 'Dump it all here…'
+            }
             placeholderTextColor={theme.colors.textTertiary}
-            accessibilityLabel={askMode ? 'Ask' : quickMode ? 'Quick add' : 'Brain dump'}
+            accessibilityLabel={target ? `Reply to ${target.name}` : askMode ? 'Ask' : quickMode ? 'Quick add' : 'Brain dump'}
             accessibilityHint={
               askMode
                 ? 'Ask about your schedule, tasks, or anything else'
@@ -99,7 +189,7 @@ export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainD
                 ? 'Describe one item, for example dentist at 3pm tomorrow'
                 : 'Type everything on your mind, one thing per line'
             }
-            returnKeyType={askMode ? 'send' : quickMode ? 'done' : 'default'}
+            returnKeyType={askMode || target ? 'send' : quickMode ? 'done' : 'default'}
             onSubmitEditing={oneLine ? handleSubmit : undefined}
             value={text}
             onChangeText={setText}
@@ -111,7 +201,7 @@ export default function BrainDumpInput({ onSubmit, onAsk, isProcessing }: BrainD
             onPress={handleSubmit}
             disabled={!canSubmit}
             accessibilityRole="button"
-            accessibilityLabel={askMode ? 'Ask' : quickMode ? 'Add' : 'Process brain dump'}
+            accessibilityLabel={target ? `Send to ${target.name}` : askMode ? 'Ask' : quickMode ? 'Add' : 'Process brain dump'}
             {...a11yState({ disabled: !canSubmit, busy: isProcessing })}
             style={({ pressed }) => [
               styles.send,
@@ -152,6 +242,25 @@ const styles = StyleSheet.create({
   },
   modes: {
     alignSelf: 'flex-start',
+  },
+  targetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  targetChip: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 19,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '100%',
+  },
+  targetText: {
+    fontSize: 14,
+    fontWeight: '500',
+    flexShrink: 1,
   },
   composerRow: {
     flexDirection: 'row',

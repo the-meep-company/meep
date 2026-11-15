@@ -9,6 +9,8 @@ import { useCalendarStore } from '@/stores/calendarStore';
 import { useColorStore } from '@/stores/colorStore';
 import { EVENT_COLORS, type CalendarEvent } from '@/types';
 import { useReduceMotion, hitSlopFor, a11yState } from '@/lib/accessibility';
+import { canRunOver, canSkip, hasStarted, markRunningOver, setEventStatus } from '@/lib/eventStatus';
+import { CATEGORY_LABELS, EVENT_CATEGORIES, isEventCategory, suggestCategory, type EventCategory } from '@/lib/categories';
 
 // Spoken names for the swatches in EVENT_COLORS (screen readers can't describe a hex).
 const COLOR_NAMES: Record<string, string> = {
@@ -57,6 +59,14 @@ export default function EventFormModal({
   const [selectedColor, setSelectedColor] = useState(
     editEvent?.color ?? EVENT_COLORS[0]
   );
+  // undefined until the user picks; until then the category follows the title.
+  const [pickedCategory, setPickedCategory] = useState<EventCategory | null | undefined>(undefined);
+  const category =
+    pickedCategory !== undefined
+      ? pickedCategory
+      : isEventCategory(editEvent?.category)
+      ? editEvent.category
+      : suggestCategory(title, { hasGuests: editEvent?.hasGuests });
 
   const handleSave = () => {
     if (!title.trim()) return;
@@ -72,6 +82,7 @@ export default function EventFormModal({
         startTime,
         endTime,
         color: selectedColor,
+        category: category ?? undefined,
       });
     } else {
       const newEvent: CalendarEvent = {
@@ -82,6 +93,7 @@ export default function EventFormModal({
         endTime,
         allDay: false,
         color: selectedColor,
+        category: category ?? undefined,
         source: 'local',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -116,7 +128,24 @@ export default function EventFormModal({
     setTitle('');
     setDescription('');
     setSelectedColor(EVENT_COLORS[0]);
+    setPickedCategory(undefined);
     onClose();
+  };
+
+  // Check-off applies straight away, like Delete, rather than waiting for Save.
+  const status = editEvent?.status ?? 'planned';
+  const checkOff = editEvent
+    ? [
+        hasStarted(editEvent) && { key: 'done', label: 'Done', selected: status === 'done' },
+        canSkip(editEvent) && { key: 'skipped', label: 'Skipped', selected: status === 'skipped' },
+        canRunOver(editEvent) && { key: 'over', label: 'Running over', selected: false },
+      ].filter((o): o is { key: string; label: string; selected: boolean } => !!o)
+    : [];
+  const handleCheckOff = (key: string, selected: boolean) => {
+    if (!editEvent) return;
+    if (key === 'over') markRunningOver(editEvent);
+    else setEventStatus(editEvent, selected ? 'planned' : (key as 'done' | 'skipped'));
+    resetAndClose();
   };
 
   const formatHour = (h: number) =>
@@ -289,6 +318,74 @@ export default function EventFormModal({
               </View>
             </View>
 
+            <Text
+              accessibilityRole="header"
+              style={[styles.label, { color: theme.colors.textSecondary }]}
+            >
+              Category
+            </Text>
+            <View style={styles.chipRow} accessibilityRole="radiogroup" accessibilityLabel="Category">
+              {EVENT_CATEGORIES.map((c) => {
+                const selected = category === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    onPress={() => setPickedCategory(selected ? null : c)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={CATEGORY_LABELS[c]}
+                    {...a11yState({ checked: selected })}
+                    style={[
+                      styles.chip,
+                      selected
+                        ? { backgroundColor: theme.colors.primary }
+                        : { borderWidth: 1, borderColor: theme.colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.chipText, { color: selected ? theme.colors.onPrimary : theme.colors.text }]}>
+                      {CATEGORY_LABELS[c]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {checkOff.length > 0 && (
+              <>
+                <Text
+                  accessibilityRole="header"
+                  style={[styles.label, { color: theme.colors.textSecondary }]}
+                >
+                  Check off
+                </Text>
+                <View style={styles.chipRow}>
+                  {checkOff.map((o) => (
+                    <TouchableOpacity
+                      key={o.key}
+                      onPress={() => handleCheckOff(o.key, o.selected)}
+                      accessibilityRole="button"
+                      accessibilityLabel={o.label}
+                      {...a11yState(o.key === 'over' ? undefined : { pressed: o.selected })}
+                      style={[
+                        styles.chip,
+                        o.selected
+                          ? { backgroundColor: theme.colors.primary }
+                          : { borderWidth: 1, borderColor: theme.colors.border },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          { color: o.selected ? theme.colors.onPrimary : theme.colors.text },
+                        ]}
+                      >
+                        {o.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
             {/* Color picker */}
             <Text
               accessibilityRole="header"
@@ -421,6 +518,23 @@ const styles = StyleSheet.create({
   timeDash: {
     fontSize: 18,
     paddingHorizontal: 8,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  chip: {
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   colorRow: {
     flexDirection: 'row',

@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
-import type { AIPersona, BrainDumpResponse, ChatAction, ChatMessage, ParsedItem } from '@/types';
+import type { AIPersona, BrainDumpResponse, ChatAction, ChatMessage, FeedItem, Meeple, ParsedItem } from '@/types';
 
 export async function parseBrainDump(
   text: string,
@@ -79,6 +79,21 @@ export async function sendChatMessage(
     endTime: new Date(e.endTime).toISOString(),
   }));
 
+  // The user's bots and what they're waiting on, so Meep can hand a message to
+  // the bot that owns a pending proposal ("push gym to the evening").
+  const { useMeepleStore, isBot } = require('@/stores/meepleStore');
+  const { useFeedStore } = require('@/stores/feedStore');
+  const bots = (useMeepleStore.getState().meeples as Meeple[]).filter(isBot);
+  const pending = (useFeedStore.getState().items as FeedItem[]).filter(
+    (i) => i.type === 'proposal' && i.status === 'pending'
+  );
+  const botContext = bots.map((b) => ({
+    id: b.id,
+    name: b.name,
+    role: b.role,
+    pendingProposals: pending.filter((p) => p.meepleId === b.id).map((p) => p.title),
+  }));
+
   const { data, error } = await supabase.functions.invoke('chat', {
     body: {
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -86,7 +101,7 @@ export async function sendChatMessage(
       companionName,
       timezone,
       currentDate: now.toISOString(),
-      context: { todayEvents, todayTasks, upcomingEvents },
+      context: { todayEvents, todayTasks, upcomingEvents, bots: botContext },
     },
   });
 

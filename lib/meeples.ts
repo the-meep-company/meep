@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 import { useCalendarStore } from '@/stores/calendarStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useMeepleStore, type MeepleDraft } from '@/stores/meepleStore';
+import { isBot, useMeepleStore, type MeepleDraft } from '@/stores/meepleStore';
+import { chatWithBot } from './bots';
 import type { ChatAction, MeepleMessage, MeepleSource } from '@/types';
 
 /** Starting points offered when creating a meeple. Everything is editable afterwards. */
@@ -96,6 +97,32 @@ export async function sendToMeeple(meepleId: string, text: string): Promise<void
   const userMsg: MeepleMessage = { id: newId(), role: 'user', content: text, timestamp: new Date() };
   store.addMessage(meepleId, userMsg);
   store.setWorking(meepleId, true);
+
+  // Bots answer through run-bot, which can also leave proposals in the feed and
+  // saves its reply to the thread itself.
+  if (isBot(meeple)) {
+    try {
+      const result = await chatWithBot(meepleId, text);
+      if (result.replyMessageId && result.reply) {
+        useMeepleStore.getState().applyRemoteMessage(meepleId, {
+          id: result.replyMessageId,
+          role: 'assistant',
+          content: result.reply,
+          timestamp: new Date(),
+        });
+      }
+    } catch (err) {
+      useMeepleStore.getState().addMessage(meepleId, {
+        id: newId(),
+        role: 'assistant',
+        content: `Sorry, I couldn't get to that. ${err instanceof Error ? err.message : 'Please try again.'}`,
+        timestamp: new Date(),
+      });
+    } finally {
+      useMeepleStore.getState().setWorking(meepleId, false);
+    }
+    return;
+  }
 
   const { companionName, timezone } = useSettingsStore.getState();
   let reply: MeepleMessage;

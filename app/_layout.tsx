@@ -8,6 +8,7 @@ import { Appearance } from 'react-native';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { initializeWidgetSync } from '@/lib/widgetSync';
+import { useNotificationTaps } from '@/lib/push';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -26,6 +27,7 @@ export default function RootLayout() {
   const { user, isLoading, isGuest, initialize } = useAuthStore();
   const router = useRouter();
   const segments = useSegments();
+  useNotificationTaps();
 
   useEffect(() => {
     initialize();

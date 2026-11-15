@@ -1,14 +1,23 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Meeple, MeepleMessage } from '@/types';
+import type { BotFields, Meeple, MeepleMessage } from '@/types';
 
 const MAX_MESSAGES = 200;
 
 export type MeepleDraft = Pick<
   Meeple,
   'name' | 'role' | 'instructions' | 'icon' | 'glow' | 'webSearch' | 'scheduleAccess'
->;
+> &
+  Partial<BotFields>;
+
+/** A plain chat meeple: never runs on its own. */
+const CHAT_DEFAULTS: BotFields = { kind: 'chat', trust: 'ask', scope: [], enabled: false, pushEnabled: false };
+
+/** Fills bot fields on meeples saved before bots existed. */
+const withBotDefaults = <T extends Partial<BotFields>>(m: T) => ({ ...CHAT_DEFAULTS, ...m });
+
+export const isBot = (m: Pick<Meeple, 'kind'>) => m.kind !== 'chat';
 
 interface MeepleState {
   meeples: Meeple[];
@@ -17,7 +26,8 @@ interface MeepleState {
   /** The thread currently on screen, so its replies don't count as unread. */
   openId: string | null;
 
-  addMeeple: (draft: MeepleDraft) => string;
+  /** Pass `id` for starter bots, which use stable ids so devices don't duplicate them. */
+  addMeeple: (draft: MeepleDraft, id?: string) => string;
   updateMeeple: (id: string, updates: Partial<MeepleDraft>) => void;
   deleteMeeple: (id: string) => void;
   addMessage: (id: string, msg: MeepleMessage) => void;
@@ -62,11 +72,14 @@ export const useMeepleStore = create<MeepleState>()(
       workingIds: [],
       openId: null,
 
-      addMeeple: (draft) => {
-        const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+      addMeeple: (draft, givenId) => {
+        const id = givenId ?? Date.now().toString() + Math.random().toString(36).slice(2, 7);
         const now = new Date();
         set((s) => ({
-          meeples: [...s.meeples, { ...draft, id, messages: [], unread: false, createdAt: now, updatedAt: now }],
+          meeples: [
+            ...s.meeples.filter((m) => m.id !== id),
+            { ...withBotDefaults(draft), id, messages: [], unread: false, createdAt: now, updatedAt: now },
+          ],
         }));
         syncMeeple(get().meeples.find((m) => m.id === id));
         return id;
@@ -149,7 +162,7 @@ export const useMeepleStore = create<MeepleState>()(
           const unread = s.openId === meeple.id ? false : meeple.unread;
           return existing
             ? { meeples: patch(s.meeples, meeple.id, (m) => ({ ...m, ...meeple, unread })) }
-            : { meeples: [...s.meeples, { ...meeple, unread, messages: [] }] };
+            : { meeples: [...s.meeples, { ...withBotDefaults(meeple), unread, messages: [] }] };
         }),
 
       applyRemoteMessage: (meepleId, msg) =>
@@ -182,6 +195,10 @@ export const useMeepleStore = create<MeepleState>()(
       name: 'meep-meeples',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ meeples: state.meeples }),
+      merge: (persisted, current) => ({
+        ...current,
+        meeples: ((persisted as { meeples?: Meeple[] })?.meeples ?? []).map(withBotDefaults),
+      }),
     }
   )
 );
