@@ -17,6 +17,8 @@ interface TaskState {
   deleteTask: (id: string) => void;
   toggleStatus: (id: string) => void;
   setTasks: (tasks: Task[]) => void;
+  /** Applies changes that came from the server (Realtime) without pushing them back. */
+  applyRemote: (upserts: Task[], deletedIds?: string[]) => void;
   carryOverTasks: (now?: Date) => number;
 
   // Selectors
@@ -84,6 +86,14 @@ export const useTaskStore = create<TaskState>()(
       },
 
       setTasks: (tasks) => set({ tasks }),
+
+      applyRemote: (upserts, deletedIds = []) =>
+        set((state) => {
+          const deleted = new Set(deletedIds);
+          const byId = new Map(state.tasks.map((t) => [t.id, t]));
+          for (const t of upserts) byId.set(t.id, t);
+          return { tasks: [...byId.values()].filter((t) => !deleted.has(t.id)) };
+        }),
 
       carryOverTasks: (now = new Date()) => {
         const candidates = findCarryOverCandidates(get().tasks, now);

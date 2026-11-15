@@ -1,4 +1,4 @@
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { format } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useThemeStore } from '@/stores/themeStore';
@@ -20,31 +20,24 @@ export default function EventBlock({ event, style, compact, onPress }: EventBloc
   const isAiPlaced = event.scheduleSource === 'ai';
   const isGoogle = event.source === 'google';
 
-  const handlePress = () => {
-    if (isGoogle) {
-      Alert.alert('Google Calendar Event', 'This event is read-only. Edit it in Google Calendar.');
-      return;
-    }
-    onPress?.(event);
-  };
 
   const label = [
     event.title,
     `${format(startTime, 'h:mm a')} to ${format(endTime, 'h:mm a')}`,
     isHabit ? 'recurring habit' : null,
     isAiPlaced && !isGoogle ? 'scheduled by AI' : null,
-    isGoogle ? 'from Google Calendar, read only' : null,
+    isGoogle ? 'from Google Calendar' : null,
   ]
     .filter(Boolean)
     .join(', ');
 
   return (
     <TouchableOpacity
-      onPress={handlePress}
+      onPress={() => onPress?.(event)}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint={isGoogle ? undefined : 'Opens event details'}
+      accessibilityHint="Opens event details"
       style={[
         styles.container,
         {
